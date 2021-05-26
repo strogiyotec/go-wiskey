@@ -12,7 +12,14 @@ const (
 
 type Header struct {
 	amountOfBlocks uint32 // how many blocks are in the file
-	indexOffset    uint32 // the offest where index starts
+	indexOffset    uint32 // the offest where indexes starts
+}
+
+func DefaultHeader() *Header{
+	return &Header{
+		amountOfBlocks: 0,
+		indexOffset: 0,
+	}
 }
 
 func NewHeader(buffer []byte) *Header {
