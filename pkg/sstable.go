@@ -1,9 +1,15 @@
 package wiskey
 
-type indexes []keyIndex
+import (
+	"bytes"
+	"encoding/binary"
+	"io"
+)
+
+type indexes []tableIndex
 
 type SSTable struct {
-	tableHeader Header
+	tableHeader Footer
 	indexes     indexes
 	reader      interface{}
 }
@@ -16,9 +22,46 @@ type TableEntry struct {
 	value []byte
 }
 
+func (entry *TableEntry) writeTo(writer io.Writer) (uint32, error) {
+	buffer := bytes.NewBuffer([]byte{})
+	//key length
+	if err := binary.Write(buffer, binary.BigEndian, uint32(len(entry.key))); err != nil {
+		return 0, err
+	}
+	//value length
+	if err := binary.Write(buffer, binary.BigEndian, uint32(len(entry.value))); err != nil {
+		return 0, err
+	}
+	//key
+	if err := binary.Write(buffer, binary.BigEndian, entry.key); err != nil {
+		return 0, err
+	}
+	//value
+	if err := binary.Write(buffer, binary.BigEndian, entry.value); err != nil {
+		return 0, err
+	}
+	length, err := writer.Write(buffer.Bytes())
+	return uint32(length), err
+}
+
 //indexes to find an entry in a file
-type keyIndex struct {
-	blockOffset int    //where this block begins in the file
-	blockLength int    //the length of this block
-	key         []byte //key
+type tableIndex struct {
+	Offset      uint32 //Offset of the file where index starts
+	BlockLength uint32 //the length of the index
+}
+
+func (index *tableIndex) WriteTo(w io.Writer) error {
+	buf := bytes.NewBuffer([]byte{})
+
+	if err := binary.Write(buf, binary.BigEndian, index.BlockLength); err != nil {
+		return err
+	}
+
+	if err := binary.Write(buf, binary.BigEndian, index.Offset); err != nil {
+		return err
+	}
+
+	_, err := w.Write(buf.Bytes())
+	//can be null
+	return err
 }
