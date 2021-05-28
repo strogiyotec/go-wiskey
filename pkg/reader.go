@@ -10,6 +10,13 @@ type SSTableReader struct {
 	offset uint32
 }
 
+//Create a new sstable reader
+//It sets the reader to the given offset
+//All methods have to be called in the following order
+//1. readKeyLength
+//2. readValueLength
+//3. readKey
+//4. readValue
 func NewReader(reader *os.File, offset int64) *SSTableReader {
 	reader.Seek(offset, 0)
 	return &SSTableReader{reader: reader}
