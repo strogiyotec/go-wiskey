@@ -20,11 +20,11 @@ func ReadTable(reader *os.File) *SSTable {
 	stats, _ := reader.Stat()
 	//read footer
 	footer := readFooter(stats, reader)
-	indexes := readIndex(stats, reader, *footer)
+	indexes := readIndexes(stats, reader, *footer)
 	return &SSTable{footer: footer, indexes: indexes, reader: reader}
 }
 
-func (table *SSTable) Close(){
+func (table *SSTable) Close() {
 	table.reader.Close()
 }
 
@@ -52,40 +52,67 @@ func (table *SSTable) Get(key []byte) ([]byte, bool) {
 	if compare > 0 {
 		return nil, false
 	}
+	return table.binarySearch(key)
+}
+
+func (table *SSTable) binarySearch(key []byte) ([]byte,bool) {
+	left := 0
+	right := len(table.indexes) - 1
+	for left < right {
+		middle := (right-left)/2 + left
+		index := table.indexes[middle]
+		//read key length
+		tableReader := NewReader(table.reader, int64(index.Offset))
+		fileKeyLength := tableReader.readKeyLength()
+		//read value length
+		valueLength := tableReader.readValueLength()
+		//read actual key from the file
+		keyBuffer := tableReader.readKey(fileKeyLength)
+		compare := bytes.Compare(key, keyBuffer)
+		if compare == 0 {
+			return tableReader.readValue(valueLength),true
+		} else if compare > 0 {
+			left = middle+1
+		} else {
+			right = middle - 1
+		}
+	}
+	index := table.indexes[left]
+	tableReader := NewReader(table.reader, int64(index.Offset))
+	for tableReader.offset != index.BlockLength {
+		keyLength := tableReader.readKeyLength()
+		valueLength := tableReader.readValueLength()
+		fileKey := tableReader.readKey(keyLength)
+		value := tableReader.readValue(valueLength)
+		if bytes.Compare(key, fileKey) == 0 {
+			return value,true
+		}
+	}
 	return nil,false
 }
 
-func (table *SSTable) find(key []byte, index tableIndex) (uint32, []byte) {
+func (table *SSTable) find(key []byte, index tableIndex) (int, []byte) {
 	keyLength := uint32(len(key))
-	keyLengthBuffer := make([]byte, 4)
-	//read key length
-	table.reader.Seek(int64(index.Offset), 0)
-	table.reader.Read(keyLengthBuffer)
-	fileKeyLength := binary.BigEndian.Uint32(keyLengthBuffer)
+	tableReader := NewReader(table.reader, int64(index.Offset))
+	fileKeyLength := tableReader.readKeyLength()
 	//if keys length are not the same then don't make sense to compare an actual key
 	if keyLength != fileKeyLength {
-		return keyLength - fileKeyLength, nil
+		return len(key) - int(fileKeyLength), nil
 	}
 	//read value length
-	valueLengthBuffer := make([]byte, 4)
-	table.reader.Read(valueLengthBuffer)
-	valueLength := binary.BigEndian.Uint32(valueLengthBuffer)
+	valueLength := tableReader.readValueLength()
 	//read actual key from the file
-	keyBuffer := make([]byte, fileKeyLength)
-	table.reader.Read(keyBuffer)
+	keyBuffer := tableReader.readKey(keyLength)
 	compare := bytes.Compare(key, keyBuffer)
 	//they are equal
 	if compare == 0 {
-		valueBuffer := make([]byte, valueLength)
-		table.reader.Read(valueBuffer)
-		return 0, valueBuffer
+		return 0, tableReader.readValue(valueLength)
 	}
-	return uint32(compare), nil
-
+	return compare, nil
 }
 
 //Read the index from the file to in memory slice
-func readIndex(stats os.FileInfo, reader *os.File, footer Footer) indexes {
+func readIndexes(stats os.FileInfo, reader *os.File, footer Footer) indexes {
 	reader.Seek(int64(footer.indexOffset), 0)
 	buffer := make([]byte, stats.Size()-int64(footer.indexOffset)-footerSize)
 	reader.Read(buffer)
