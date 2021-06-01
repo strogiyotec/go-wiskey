@@ -5,6 +5,11 @@ import (
 	"os"
 )
 
+const (
+	uint32Size = 4
+	int64Size = 8
+)
+
 type SSTableReader struct {
 	reader *os.File
 	offset uint32
@@ -23,16 +28,16 @@ func NewReader(reader *os.File, offset int64) *SSTableReader {
 }
 
 func (tableReader *SSTableReader) readKeyLength() uint32 {
-	tableReader.offset += 4
-	keyLengthBuffer := make([]byte, 4)
+	tableReader.offset += uint32Size
+	keyLengthBuffer := make([]byte, uint32Size)
 	//read key length
 	tableReader.reader.Read(keyLengthBuffer)
 	return binary.BigEndian.Uint32(keyLengthBuffer)
 }
 
 func (tableReader *SSTableReader) readValueLength() uint32 {
-	tableReader.offset += 4
-	valueLengthBuffer := make([]byte, 4)
+	tableReader.offset += uint32Size
+	valueLengthBuffer := make([]byte, uint32Size)
 	tableReader.reader.Read(valueLengthBuffer)
 	return binary.BigEndian.Uint32(valueLengthBuffer)
 }
@@ -49,4 +54,11 @@ func (tableReader *SSTableReader) readValue(valueLength uint32) []byte {
 	valueBuffer := make([]byte, valueLength)
 	tableReader.reader.Read(valueBuffer)
 	return valueBuffer
+}
+
+func (tableReader *SSTableReader) readTimestamp() uint64 {
+	tableReader.offset += int64Size
+	timestamp := make([]byte, int64Size)
+	tableReader.reader.Read(timestamp)
+	return binary.BigEndian.Uint64(timestamp)
 }

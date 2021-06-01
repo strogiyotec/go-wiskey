@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"io"
 	"os"
+	"time"
 )
 
 type indexes []tableIndex
@@ -28,34 +29,37 @@ func (table *SSTable) Close() {
 	table.reader.Close()
 }
 
-//TODO: implement binary search
-//for now Get works only for the first and the last key in the file
-func (table *SSTable) Get(key []byte) ([]byte, bool) {
+//Returns value,timestamp of this value,bool which represents if value exists
+func (table *SSTable) Get(key []byte) ([]byte, uint64, bool) {
 	//try smallest key
 	smallest := table.indexes[0]
-	compare, value := table.find(key, smallest)
+	compare, value, timestamp := table.find(key, smallest)
 	if compare == 0 {
-		return value, true
+		return value, timestamp, true
 	}
 	//if smaller than smallest key in file than key is not in the file
 	if compare < 0 {
-		return nil, false
+		return nil, timestamp, false
 	}
 	//try biggest key
 	//TODO: block can contain multiple keys, need to check them all
 	biggest := table.indexes[len(table.indexes)-1]
-	compare, value = table.find(key, biggest)
+	compare, value, timestamp = table.find(key, biggest)
 	if compare == 0 {
-		return value, true
+		return value, timestamp, true
 	}
 	//if bigger than biggest key in file than key is not in the file
 	if compare > 0 {
-		return nil, false
+		return nil, timestamp, false
 	}
 	return table.binarySearch(key)
 }
 
-func (table *SSTable) binarySearch(key []byte) ([]byte,bool) {
+//Tries to find given key in the sstable
+//Returns value byte array or nil if not found
+//timestamp of this value or 0 if not found
+//bool true if found,false otherwise
+func (table *SSTable) binarySearch(key []byte) ([]byte, uint64, bool) {
 	left := 0
 	right := len(table.indexes) - 1
 	for left < right {
@@ -70,9 +74,9 @@ func (table *SSTable) binarySearch(key []byte) ([]byte,bool) {
 		keyBuffer := tableReader.readKey(fileKeyLength)
 		compare := bytes.Compare(key, keyBuffer)
 		if compare == 0 {
-			return tableReader.readValue(valueLength),true
+			return tableReader.readValue(valueLength), tableReader.readTimestamp(), true
 		} else if compare > 0 {
-			left = middle+1
+			left = middle + 1
 		} else {
 			right = middle - 1
 		}
@@ -85,19 +89,19 @@ func (table *SSTable) binarySearch(key []byte) ([]byte,bool) {
 		fileKey := tableReader.readKey(keyLength)
 		value := tableReader.readValue(valueLength)
 		if bytes.Compare(key, fileKey) == 0 {
-			return value,true
+			return value, tableReader.readTimestamp(), true
 		}
 	}
-	return nil,false
+	return nil, 0, false
 }
 
-func (table *SSTable) find(key []byte, index tableIndex) (int, []byte) {
+func (table *SSTable) find(key []byte, index tableIndex) (int, []byte, uint64) {
 	keyLength := uint32(len(key))
 	tableReader := NewReader(table.reader, int64(index.Offset))
 	fileKeyLength := tableReader.readKeyLength()
 	//if keys length are not the same then don't make sense to compare an actual key
 	if keyLength != fileKeyLength {
-		return len(key) - int(fileKeyLength), nil
+		return len(key) - int(fileKeyLength), nil, 0
 	}
 	//read value length
 	valueLength := tableReader.readValueLength()
@@ -106,9 +110,9 @@ func (table *SSTable) find(key []byte, index tableIndex) (int, []byte) {
 	compare := bytes.Compare(key, keyBuffer)
 	//they are equal
 	if compare == 0 {
-		return 0, tableReader.readValue(valueLength)
+		return 0, tableReader.readValue(valueLength), tableReader.readTimestamp()
 	}
-	return compare, nil
+	return compare, nil, 0
 }
 
 //Read the index from the file to in memory slice
@@ -137,12 +141,21 @@ func readFooter(stats os.FileInfo, reader *os.File) *Footer {
 	return NewFooter(buf)
 }
 
+func NewEntry(key []byte, value []byte) TableEntry {
+	return TableEntry{
+		key:       key,
+		value:     value,
+		timeStamp: uint64(time.Now().Unix()),
+	}
+}
+
 //entries that are stored in the sstable file
 // key and value are byte arrays so they support anything that
 // can be converted to byte array
 type TableEntry struct {
-	key   []byte
-	value []byte
+	key       []byte
+	value     []byte
+	timeStamp uint64
 }
 
 func (entry *TableEntry) writeTo(writer io.Writer) (uint32, error) {
@@ -161,6 +174,10 @@ func (entry *TableEntry) writeTo(writer io.Writer) (uint32, error) {
 	}
 	//value
 	if err := binary.Write(buffer, binary.BigEndian, entry.value); err != nil {
+		return 0, err
+	}
+	//timestamp
+	if err := binary.Write(buffer, binary.BigEndian, entry.timeStamp); err != nil {
 		return 0, err
 	}
 	length, err := writer.Write(buffer.Bytes())
