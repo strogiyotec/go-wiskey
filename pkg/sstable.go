@@ -133,13 +133,6 @@ func readIndexes(stats os.FileInfo, reader *os.File, footer Footer) indexes {
 
 }
 
-//Read the footer
-func readFooter(stats os.FileInfo, reader *os.File) *Footer {
-	buf := make([]byte, footerSize)
-	reader.Seek(stats.Size()-footerSize, 0)
-	reader.Read(buf)
-	return NewFooter(buf)
-}
 
 func NewEntry(key []byte, value []byte) TableEntry {
 	return TableEntry{
@@ -158,6 +151,7 @@ type TableEntry struct {
 	timeStamp uint64
 }
 
+//Write entry to given writer and return the length of the written bytes sequence
 func (entry *TableEntry) writeTo(writer io.Writer) (uint32, error) {
 	buffer := bytes.NewBuffer([]byte{})
 	//key length

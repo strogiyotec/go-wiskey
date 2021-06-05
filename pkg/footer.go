@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"os"
 )
 
 const (
@@ -46,4 +47,13 @@ func (h *Footer) asByteArray() []byte {
 		panic(err)
 	}
 	return buffer.Bytes()
+}
+
+
+//Read the footer
+func readFooter(stats os.FileInfo, reader *os.File) *Footer {
+	buf := make([]byte, footerSize)
+	reader.Seek(stats.Size()-footerSize, 0)
+	reader.Read(buf)
+	return NewFooter(buf)
 }
