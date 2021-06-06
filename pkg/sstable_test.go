@@ -53,7 +53,7 @@ func saveFakeEntries(t *testing.T, name string, entries []TableEntry) {
 	writer, _ := os.OpenFile(name, os.O_APPEND|os.O_WRONLY, 0600)
 	tableWriter := SSTableWriter{maxBlockLength: uint32(20), currentBlockPosition: 0, size: 0, writeCloser: writer, inMemoryIndex: indexes{}}
 	for _, entry := range entries {
-		err := tableWriter.WriteEntry(entry)
+		_,err := tableWriter.WriteEntry(entry)
 		if err != nil {
 			t.Error(err)
 		}

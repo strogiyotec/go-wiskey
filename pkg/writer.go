@@ -2,7 +2,7 @@ package wiskey
 
 import "io"
 
-//Immutable sstable
+//vlog writer
 type SSTableWriter struct {
 	maxBlockLength       uint32
 	currentBlockPosition uint32
@@ -33,17 +33,18 @@ func (w *SSTableWriter) Close() error {
 }
 
 //Write entry to the file, all entries have to be sorted in advance
-func (w *SSTableWriter) WriteEntry(e TableEntry) error {
+func (w *SSTableWriter) WriteEntry(e TableEntry) (*ValueMeta, error) {
 	length, err := e.writeTo(w.writeCloser)
+	meta := &ValueMeta{length: length, offset: w.size}
 	w.size += length
 	if err != nil {
-		return err
+		return nil, err
 	}
 	//if block is full then create the index for this block
 	if w.blockIsFull() {
 		w.closeBlock()
 	}
-	return nil
+	return meta, nil
 }
 
 func (w *SSTableWriter) blockIsFull() bool {

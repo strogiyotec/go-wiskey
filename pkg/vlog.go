@@ -17,13 +17,14 @@ func (log *vlog) Gc(tailLength uint) {
 //Append new entry to the head of vlog
 //the binary format for entry is [klength,vlength,key,value]
 //we store key in vlog for garbage collection purposes
-func (log *vlog) Append(entry *TableEntry) {
+func (log *vlog) Append(entry TableEntry) (*ValueMeta, error) {
 	length, err := entry.writeTo(log.readAndWrite)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
+	meta := &ValueMeta{length: length, offset: log.size}
 	log.size += length
-	return
+	return meta, nil
 }
 
 type ValueMeta struct {
