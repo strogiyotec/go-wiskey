@@ -12,6 +12,10 @@ type tableIndex struct {
 	BlockLength uint32 //the length of the index
 }
 
+//Write index to the end of sstable
+//+-------------+--------+
+//| BlockLength | Offset |
+//+-------------+--------+
 func (index *tableIndex) WriteTo(w io.Writer) error {
 	buf := bytes.NewBuffer([]byte{})
 

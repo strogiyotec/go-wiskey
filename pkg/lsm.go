@@ -5,7 +5,7 @@ type lsmTree struct {
 	log         *vlog
 }
 
-
+//save entry in vlog first then in sstable
 func (lsm *lsmTree) Put(entry *TableEntry) error {
 	meta, err := lsm.log.Append(entry)
 	if err != nil {

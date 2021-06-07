@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	deleted     = 1
-	non_deleted = 0
+	deleted    = 1
+	nonDeleted = 0
 )
 
 // SSTABLE Entry
@@ -37,6 +37,9 @@ func NewSStableEntry(entry *TableEntry, meta *ValueMeta) *sstableEntry {
 
 //write entry to sstable
 //Format [key length + key +  timestamp + meta + offset + length]
+// +------------+-----+-----------+------+------------+------------+
+// | Key Length | Key | timestamp | meta | vlogoffset | vloglength |
+// +------------+-----+-----------+------+------------+------------+
 func (entry *sstableEntry) writeTo(writer io.Writer) (uint32, error) {
 	buffer := bytes.NewBuffer([]byte{})
 	//key length
@@ -58,7 +61,7 @@ func (entry *sstableEntry) writeTo(writer io.Writer) (uint32, error) {
 		}
 	} else {
 		//not deleted
-		if err := binary.Write(buffer, binary.BigEndian, byte(non_deleted)); err != nil {
+		if err := binary.Write(buffer, binary.BigEndian, byte(nonDeleted)); err != nil {
 			return 0, err
 		}
 		//offset
@@ -88,7 +91,10 @@ func NewEntry(key []byte, value []byte) TableEntry {
 	return TableEntry{key: key, value: value}
 }
 
-//Write entry to given writer and return the length of the written bytes sequence
+//Write entry to vlog
+//+------------+--------------+-----+-------+
+//| Key Length | Value length | Key | Value |
+//+------------+--------------+-----+-------+
 func (entry *TableEntry) writeTo(writer io.Writer) (uint32, error) {
 	buffer := bytes.NewBuffer([]byte{})
 	//key length

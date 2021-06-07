@@ -50,6 +50,7 @@ func (log *vlog) Append(entry *TableEntry) (*ValueMeta, error) {
 	return meta, nil
 }
 
+//metadata of saved entry in vlog
 type ValueMeta struct {
 	length uint32 //value length in vlog file
 	offset uint32 //value offset in vlog file

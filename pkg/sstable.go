@@ -3,7 +3,6 @@ package wiskey
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"os"
 )
 
@@ -118,7 +117,7 @@ func (table *SSTable) fetchFromVlog(tableReader *SSTableReader, key []byte) *Sea
 	if err != nil {
 		panic(err)
 	}
-	return &SearchEntry{key: get.key, value: get.value, deleted: non_deleted, timestamp: timestamp}
+	return &SearchEntry{key: get.key, value: get.value, deleted: nonDeleted, timestamp: timestamp}
 }
 
 func (table *SSTable) find(key []byte, index tableIndex) (int, *SearchEntry) {
@@ -142,8 +141,7 @@ func (table *SSTable) find(key []byte, index tableIndex) (int, *SearchEntry) {
 //Read the index from the file to in memory slice
 func readIndexes(stats os.FileInfo, reader *os.File, footer Footer) indexes {
 	buffer := make([]byte, stats.Size()-int64(footer.indexOffset)-footerSize)
-	amount, _ := reader.ReadAt(buffer, int64(footer.indexOffset))
-	fmt.Println(amount)
+	reader.ReadAt(buffer, int64(footer.indexOffset))
 	start := 0
 	end := len(buffer)
 	indexes := indexes{}
