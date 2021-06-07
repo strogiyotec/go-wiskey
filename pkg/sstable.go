@@ -3,8 +3,8 @@ package wiskey
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"os"
-	"time"
 )
 
 type indexes []tableIndex
@@ -13,15 +13,31 @@ type SSTable struct {
 	footer  *Footer
 	indexes indexes
 	reader  *os.File
+	log     *vlog
+}
+
+type SearchEntry struct {
+	key       []byte
+	value     []byte
+	deleted   byte
+	timestamp uint64
+}
+
+func NewDeletedEntry(key []byte, timestamp uint64) *SearchEntry {
+	return &SearchEntry{
+		key:       key,
+		deleted:   deleted,
+		timestamp: timestamp,
+	}
 }
 
 //Constructor
-func ReadTable(reader *os.File) *SSTable {
+func ReadTable(reader *os.File, log *vlog) *SSTable {
 	stats, _ := reader.Stat()
 	//read footer
 	footer := readFooter(stats, reader)
 	indexes := readIndexes(stats, reader, *footer)
-	return &SSTable{footer: footer, indexes: indexes, reader: reader}
+	return &SSTable{footer: footer, indexes: indexes, reader: reader, log: log}
 }
 
 func (table *SSTable) Close() {
@@ -29,27 +45,27 @@ func (table *SSTable) Close() {
 }
 
 //Returns value,timestamp of this value,bool which represents if value exists
-func (table *SSTable) Get(key []byte) ([]byte, uint64, bool) {
+func (table *SSTable) Get(key []byte) (*SearchEntry, bool) {
 	//try smallest key
-	smallest := table.indexes[0]
-	compare, value, timestamp := table.find(key, smallest)
+	firstIndex := table.indexes[0]
+	compare, value := table.find(key, firstIndex)
 	if compare == 0 {
-		return value, timestamp, true
+		return value, true
 	}
-	//if smaller than smallest key in file than key is not in the file
+	//if smaller than firstIndex key in file than key is not in the file
 	if compare < 0 {
-		return nil, timestamp, false
+		return nil, false
 	}
 	//try biggest key
 	//TODO: block can contain multiple keys, need to check them all
-	biggest := table.indexes[len(table.indexes)-1]
-	compare, value, timestamp = table.find(key, biggest)
+	lastIndex := table.indexes[len(table.indexes)-1]
+	compare, value = table.find(key, lastIndex)
 	if compare == 0 {
-		return value, timestamp, true
+		return value, true
 	}
-	//if bigger than biggest key in file than key is not in the file
+	//if bigger than lastIndex key in file than key is not in the file
 	if compare > 0 {
-		return nil, timestamp, false
+		return nil, false
 	}
 	return table.binarySearch(key)
 }
@@ -58,7 +74,7 @@ func (table *SSTable) Get(key []byte) ([]byte, uint64, bool) {
 //Returns value byte array or nil if not found
 //timestamp of this value or 0 if not found
 //bool true if found,false otherwise
-func (table *SSTable) binarySearch(key []byte) ([]byte, uint64, bool) {
+func (table *SSTable) binarySearch(key []byte) (*SearchEntry, bool) {
 	left := 0
 	right := len(table.indexes) - 1
 	for left < right {
@@ -67,13 +83,11 @@ func (table *SSTable) binarySearch(key []byte) ([]byte, uint64, bool) {
 		//read key length
 		tableReader := NewReader(table.reader, int64(index.Offset))
 		fileKeyLength := tableReader.readKeyLength()
-		//read value length
-		valueLength := tableReader.readValueLength()
 		//read actual key from the file
 		keyBuffer := tableReader.readKey(fileKeyLength)
 		compare := bytes.Compare(key, keyBuffer)
 		if compare == 0 {
-			return tableReader.readValue(valueLength), tableReader.readTimestamp(), true
+			return table.fetchFromVlog(tableReader, keyBuffer), true
 		} else if compare > 0 {
 			left = middle + 1
 		} else {
@@ -84,41 +98,52 @@ func (table *SSTable) binarySearch(key []byte) ([]byte, uint64, bool) {
 	tableReader := NewReader(table.reader, int64(index.Offset))
 	for tableReader.offset != index.BlockLength {
 		keyLength := tableReader.readKeyLength()
-		valueLength := tableReader.readValueLength()
 		fileKey := tableReader.readKey(keyLength)
-		value := tableReader.readValue(valueLength)
 		if bytes.Compare(key, fileKey) == 0 {
-			return value, tableReader.readTimestamp(), true
+			return table.fetchFromVlog(tableReader, fileKey), true
 		}
 	}
-	return nil, 0, false
+	return nil, false
 }
 
-func (table *SSTable) find(key []byte, index tableIndex) (int, []byte, uint64) {
-	keyLength := uint32(len(key))
+func (table *SSTable) fetchFromVlog(tableReader *SSTableReader, key []byte) *SearchEntry {
+	timestamp := tableReader.readTimestamp()
+	meta := tableReader.readMeta()
+	if meta == deleted {
+		return NewDeletedEntry(key, timestamp)
+	}
+	offset := tableReader.readValueOffset()
+	length := tableReader.readValueLength()
+	get, err := table.log.Get(ValueMeta{length: length, offset: offset})
+	if err != nil {
+		panic(err)
+	}
+	return &SearchEntry{key: get.key, value: get.value, deleted: non_deleted, timestamp: timestamp}
+}
+
+func (table *SSTable) find(key []byte, index tableIndex) (int, *SearchEntry) {
+	searchKeyLength := uint32(len(key))
 	tableReader := NewReader(table.reader, int64(index.Offset))
 	fileKeyLength := tableReader.readKeyLength()
 	//if keys length are not the same then don't make sense to compare an actual key
-	if keyLength != fileKeyLength {
-		return len(key) - int(fileKeyLength), nil, 0
+	if searchKeyLength != fileKeyLength {
+		return len(key) - int(fileKeyLength), nil
 	}
-	//read value length
-	valueLength := tableReader.readValueLength()
 	//read actual key from the file
-	keyBuffer := tableReader.readKey(keyLength)
+	keyBuffer := tableReader.readKey(searchKeyLength)
 	compare := bytes.Compare(key, keyBuffer)
 	//they are equal
 	if compare == 0 {
-		return 0, tableReader.readValue(valueLength), tableReader.readTimestamp()
+		return 0, table.fetchFromVlog(tableReader, keyBuffer)
 	}
-	return compare, nil, 0
+	return compare, nil
 }
 
 //Read the index from the file to in memory slice
 func readIndexes(stats os.FileInfo, reader *os.File, footer Footer) indexes {
-	reader.Seek(int64(footer.indexOffset), 0)
 	buffer := make([]byte, stats.Size()-int64(footer.indexOffset)-footerSize)
-	reader.Read(buffer)
+	amount, _ := reader.ReadAt(buffer, int64(footer.indexOffset))
+	fmt.Println(amount)
 	start := 0
 	end := len(buffer)
 	indexes := indexes{}
@@ -131,12 +156,3 @@ func readIndexes(stats os.FileInfo, reader *os.File, footer Footer) indexes {
 	return indexes
 
 }
-
-func NewEntry(key []byte, value []byte) TableEntry {
-	return TableEntry{
-		key:       key,
-		value:     value,
-		timeStamp: uint64(time.Now().Unix()),
-	}
-}
-

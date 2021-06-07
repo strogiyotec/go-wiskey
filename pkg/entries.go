@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"time"
 )
 
 const (
@@ -11,6 +12,7 @@ const (
 	non_deleted = 0
 )
 
+// SSTABLE Entry
 type sstableEntry struct {
 	key         []byte //key
 	timeStamp   uint64 //when it was created
@@ -19,7 +21,22 @@ type sstableEntry struct {
 	valueLength uint32 //the length of the value
 }
 
+func DeletedSstableEntry(entry TableEntry) *sstableEntry {
+	return nil
+}
+
+func NewSStableEntry(entry *TableEntry, meta *ValueMeta) *sstableEntry {
+	return &sstableEntry{
+		key:         entry.key,
+		timeStamp:   uint64(time.Now().Unix()),
+		deleted:     0,
+		valueOffset: meta.offset,
+		valueLength: meta.length,
+	}
+}
+
 //write entry to sstable
+//Format [key length + key +  timestamp + meta + offset + length]
 func (entry *sstableEntry) writeTo(writer io.Writer) (uint32, error) {
 	buffer := bytes.NewBuffer([]byte{})
 	//key length
@@ -40,6 +57,7 @@ func (entry *sstableEntry) writeTo(writer io.Writer) (uint32, error) {
 			return 0, err
 		}
 	} else {
+		//not deleted
 		if err := binary.Write(buffer, binary.BigEndian, byte(non_deleted)); err != nil {
 			return 0, err
 		}
@@ -56,13 +74,18 @@ func (entry *sstableEntry) writeTo(writer io.Writer) (uint32, error) {
 	return uint32(length), err
 }
 
+/// TableEntry
+
 // entries that are stored in the vlog file
 // key and value are byte arrays so they support anything that
 // can be converted to byte array
 type TableEntry struct {
-	key       []byte
-	value     []byte
-	timeStamp uint64
+	key   []byte
+	value []byte
+}
+
+func NewEntry(key []byte, value []byte) TableEntry {
+	return TableEntry{key: key, value: value}
 }
 
 //Write entry to given writer and return the length of the written bytes sequence
