@@ -25,7 +25,7 @@ func TestLsmTree_Put(t *testing.T) {
 	vlog := &vlog{file: vlogFile.Name(), size: 0}
 	tree := lsmTree{log: vlog, sstablePath: tempDir,memtable: NewMemTable(100)}
 	entries := FakeEntries()
-	//save entries
+	//save entries in unsorted order, it will be sorted by memtable
 	for _, entry := range entries {
 		err := tree.Put(&entry)
 		if err != nil {
