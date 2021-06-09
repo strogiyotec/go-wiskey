@@ -12,10 +12,13 @@ type SSTableWriter struct {
 }
 
 //create new writeCloser
-func NewWriter(w io.WriteCloser) *SSTableWriter {
+func NewWriter(w io.WriteCloser,blockLength uint32) *SSTableWriter {
 	return &SSTableWriter{
-		maxBlockLength: 64 * 1024,
-		writeCloser:    w,
+		maxBlockLength:       blockLength,
+		writeCloser:          w,
+		currentBlockPosition: uint32(0),
+		size:                 uint32(0),
+		inMemoryIndex:        indexes{},
 	}
 }
 
