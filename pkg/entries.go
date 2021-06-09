@@ -25,9 +25,9 @@ func DeletedSstableEntry(entry TableEntry) *sstableEntry {
 	return nil
 }
 
-func NewSStableEntry(entry *TableEntry, meta *ValueMeta) *sstableEntry {
+func NewSStableEntry(key []byte, meta *ValueMeta) *sstableEntry {
 	return &sstableEntry{
-		key:         entry.key,
+		key:         key,
 		timeStamp:   uint64(time.Now().Unix()),
 		deleted:     0,
 		valueOffset: meta.offset,
