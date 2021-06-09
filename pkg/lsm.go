@@ -3,10 +3,10 @@ package wiskey
 import "os"
 
 type lsmTree struct {
-	sstablePath string
-	log         *vlog
-	memtable    *Memtable
-	sstables    []string //list of created sstables
+	sstablePath string    //directory with sstables
+	log         *vlog     //vlog
+	memtable    *Memtable //in memory table
+	sstables    []string  //list of created sstables
 }
 
 //save entry in vlog first then in sstable
@@ -28,6 +28,7 @@ func (lsm *lsmTree) Put(entry *TableEntry) error {
 	return nil
 }
 
+//Flush in memory red black tree to sstable on disk
 func (lsm *lsmTree) Flush() error {
 	sstablePath := lsm.sstablePath + "/" + RandStringBytes(10) + ".sstable"
 	file, err := os.OpenFile(sstablePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
