@@ -9,6 +9,10 @@ type lsmTree struct {
 	sstables   []string  //list of created sstables
 }
 
+func NewLsmTree(log *vlog, sstableDir string, memtable *Memtable) *lsmTree {
+	return &lsmTree{log: log, sstableDir: sstableDir, memtable: memtable}
+}
+
 func (lsm *lsmTree) Get(key []byte) ([]byte, bool) {
 	meta, found := lsm.memtable.Get(key)
 	//first check in memory table
@@ -33,6 +37,19 @@ func (lsm *lsmTree) Get(key []byte) ([]byte, bool) {
 			}
 		}
 	}
+}
+
+//save entry in vlog first then in sstable
+//TODO: should it be saved in vlog ?
+func (lsm *lsmTree) Delete(key []byte) error {
+	lsm.memtable.Delete(key)
+	if lsm.memtable.isFull() {
+		err := lsm.Flush()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 //save entry in vlog first then in sstable

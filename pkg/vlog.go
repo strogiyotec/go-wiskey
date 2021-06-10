@@ -10,6 +10,13 @@ type vlog struct {
 	size uint32 // current size of the file,it has to be updated every time you append a new value
 }
 
+func NewVlog(file string) *vlog {
+	return &vlog{
+		file: file,
+		size: 0,
+	}
+}
+
 func (log *vlog) Get(meta ValueMeta) (*TableEntry, error) {
 	reader, err := os.OpenFile(log.file, os.O_RDONLY, 0666)
 	if err != nil {
