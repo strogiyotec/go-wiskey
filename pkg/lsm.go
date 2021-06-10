@@ -3,10 +3,36 @@ package wiskey
 import "os"
 
 type lsmTree struct {
-	sstablePath string    //directory with sstables
-	log         *vlog     //vlog
-	memtable    *Memtable //in memory table
-	sstables    []string  //list of created sstables
+	sstableDir string    //directory with sstables
+	log        *vlog     //vlog
+	memtable   *Memtable //in memory table
+	sstables   []string  //list of created sstables
+}
+
+func (lsm *lsmTree) Get(key []byte) ([]byte, bool) {
+	meta, found := lsm.memtable.Get(key)
+	//first check in memory table
+	if found {
+		entry, err := lsm.log.Get(*meta)
+		if err != nil {
+			panic(err)
+		}
+		return entry.value, true
+	} else {
+		//if not in memory then try to find in sstables
+		//multiple sstables can have the same key
+		//choose the one with latest timestamp
+		foundEntry, found := lsm.findInSStables(key)
+		if !found {
+			return nil, false
+		} else {
+			if foundEntry.deleted == deleted {
+				return nil, false
+			} else {
+				return foundEntry.value, true
+			}
+		}
+	}
 }
 
 //save entry in vlog first then in sstable
@@ -30,7 +56,7 @@ func (lsm *lsmTree) Put(entry *TableEntry) error {
 
 //Flush in memory red black tree to sstable on disk
 func (lsm *lsmTree) Flush() error {
-	sstablePath := lsm.sstablePath + "/" + RandStringBytes(10) + ".sstable"
+	sstablePath := lsm.sstableDir + "/" + RandStringBytes(10) + ".sstable"
 	file, err := os.OpenFile(sstablePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		return err
@@ -42,4 +68,23 @@ func (lsm *lsmTree) Flush() error {
 	}
 	lsm.sstables = append(lsm.sstables, sstablePath)
 	return nil
+}
+
+func (lsm *lsmTree) findInSStables(key []byte) (*SearchEntry, bool) {
+	var latestEntry *SearchEntry
+	for _, tablePath := range lsm.sstables {
+		reader, _ := os.Open(tablePath)
+		sstable := ReadTable(reader, lsm.log)
+		searchEntry, found := sstable.Get(key)
+		if found {
+			if latestEntry == nil {
+				latestEntry = searchEntry
+			} else {
+				if searchEntry.timestamp > latestEntry.timestamp {
+					latestEntry = searchEntry
+				}
+			}
+		}
+	}
+	return latestEntry, latestEntry != nil
 }

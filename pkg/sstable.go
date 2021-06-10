@@ -43,7 +43,6 @@ func (table *SSTable) Close() {
 	table.reader.Close()
 }
 
-//Returns value,timestamp of this value,bool which represents if value exists
 func (table *SSTable) Get(key []byte) (*SearchEntry, bool) {
 	//try smallest key
 	firstIndex := table.indexes[0]
