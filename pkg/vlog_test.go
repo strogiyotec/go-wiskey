@@ -21,7 +21,7 @@ func TestVlog_Append(t *testing.T) {
 			t.Error(err)
 		}
 		if meta.length != length {
-			t.Error("The length doesn't match")
+			t.Error("The lengths don't match")
 		}
 	}
 	currentOffset := uint32(0)

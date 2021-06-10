@@ -27,10 +27,19 @@ func (memtable *Memtable) Flush(writer *SSTableWriter) error {
 	iterator.Begin()
 	for iterator.Next() {
 		key := iterator.Key().(string)
-		value := iterator.Value().(*ValueMeta)
-		_, err := writer.WriteEntry(NewSStableEntry([]byte(key), value))
-		if err != nil {
-			return err
+		//if deleted then value stores tombstone string instead of vlog offset
+		_, ok := iterator.Value().(string)
+		if ok {
+			_, err := writer.WriteEntry(DeletedSstableEntry([]byte(key)))
+			if err != nil {
+				return err
+			}
+		} else {
+			valueMeta := iterator.Value().(*ValueMeta)
+			_, err := writer.WriteEntry(NewSStableEntry([]byte(key), valueMeta))
+			if err != nil {
+				return err
+			}
 		}
 	}
 	err := writer.Close()

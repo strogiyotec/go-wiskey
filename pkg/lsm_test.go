@@ -1,9 +1,11 @@
 package wiskey
 
 import (
+	"bytes"
 	"io/ioutil"
 	"os"
 	"testing"
+	"time"
 )
 
 //unsorted list of entries
@@ -17,44 +19,92 @@ func FakeEntries() []TableEntry {
 		NewEntry([]byte("TNITA"), []byte("DEVELOPER5")),
 	}
 }
-func TestLsmTree_Put(t *testing.T) {
+
+func InitTestLsmWithMeta() *lsmTree {
 	tempDir, _ := ioutil.TempDir("", "")
 	vlogFile, _ := ioutil.TempFile("", "")
-	defer os.RemoveAll(tempDir)
-	defer os.Remove(vlogFile.Name())
-	vlog := &vlog{file: vlogFile.Name(), size: 0}
-	tree := lsmTree{log: vlog, sstablePath: tempDir,memtable: NewMemTable(100)}
+	vlog := NewVlog(vlogFile.Name())
+	return NewLsmTree(vlog, tempDir, NewMemTable(100))
+}
+
+func TestLsmTree_GetDeletedValue(t *testing.T) {
+	tree := InitTestLsmWithMeta()
+	defer os.RemoveAll(tree.sstableDir)
+	defer os.Remove(tree.log.file)
+	key := []byte("ANITA")
+	value := []byte("DEVELOPER")
+	//save entry and flush to sstable
+	err := tree.Put(&TableEntry{key: key, value: value})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree.Flush()
+	//sleep for a second and delete a key
+	time.Sleep(1 * time.Second)
+	err = tree.Delete(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree.Flush()
+	_, found := tree.Get(key)
+	if found {
+		t.Fatal("Deleted key was found")
+	}
+}
+
+func TestLsmTree_PutAndGetFromSSTable(t *testing.T) {
+	tree := InitTestLsmWithMeta()
+	defer os.RemoveAll(tree.sstableDir)
+	defer os.Remove(tree.log.file)
 	entries := FakeEntries()
 	//save entries in unsorted order, it will be sorted by memtable
 	for _, entry := range entries {
 		err := tree.Put(&entry)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 	}
 	err := tree.Flush()
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
-	reader, _ := os.Open(tree.sstables[0])
-	sstable := ReadTable(reader, vlog)
 	//fetch entries
 	for _, entry := range entries {
-		result, found := sstable.Get(entry.key)
+		result, found := tree.Get(entry.key)
 		if !found {
-			t.Error("Key wasn't found in sstable")
+			t.Fatal("Key wasn't found in sstable")
 		}
-		if string(result.key) != string(entry.key) {
-			t.Error("Key in sstable doesn't match an actual key")
-		}
-		if string(result.value) != string(entry.value) {
-			t.Error("Value in sstable doesn't match an actual value")
+		if bytes.Compare(result, entry.value) != 0 {
+			t.Fatal("Value in sstable doesn't match an actual value")
 		}
 	}
 	//try to find non existing key
-	_, found := sstable.Get([]byte("NON EXISTING KEY"))
+	_, found := tree.Get([]byte("NON EXISTING KEY"))
 	if found {
 		t.Error("Found non existing key")
 	}
+}
 
+//Test get when in memory
+func TestLsmTree_GetInMemory(t *testing.T) {
+	tree := InitTestLsmWithMeta()
+	defer os.RemoveAll(tree.sstableDir)
+	defer os.Remove(tree.log.file)
+	entries := FakeEntries()
+	//save entries but don't flush
+	for _, entry := range entries {
+		err := tree.Put(&entry)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, entry := range entries {
+		value, found := tree.Get(entry.key)
+		if !found {
+			t.Fatal("Value was not found in lsm tree")
+		}
+		if bytes.Compare(value, entry.value) != 0 {
+			t.Fatal("Values don't match")
+		}
+	}
 }

@@ -21,15 +21,19 @@ type sstableEntry struct {
 	valueLength uint32 //the length of the value
 }
 
-func DeletedSstableEntry(entry TableEntry) *sstableEntry {
-	return nil
+func DeletedSstableEntry(key []byte) *sstableEntry {
+	return &sstableEntry{
+		key:         key,
+		timeStamp:   uint64(time.Now().Unix()),
+		deleted:     deleted,
+	}
 }
 
 func NewSStableEntry(key []byte, meta *ValueMeta) *sstableEntry {
 	return &sstableEntry{
 		key:         key,
 		timeStamp:   uint64(time.Now().Unix()),
-		deleted:     0,
+		deleted:     nonDeleted,
 		valueOffset: meta.offset,
 		valueLength: meta.length,
 	}
