@@ -38,14 +38,20 @@ func TestLsmTree_GetDeletedValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree.Flush()
+	err = tree.Flush()
+	if err != nil {
+		t.Fatal(err)
+	}
 	//sleep for a second and delete a key
 	time.Sleep(1 * time.Second)
 	err = tree.Delete(key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree.Flush()
+	err = tree.Flush()
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, found := tree.Get(key)
 	if found {
 		t.Fatal("Deleted key was found")
