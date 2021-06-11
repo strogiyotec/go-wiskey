@@ -6,7 +6,7 @@ paper
 
 # Description
 
-Dead simple lsm implementation which stores values in the vlog which makes
+Dead simple lsm implementation which stores values in the vlog which
 decreases write amplification of lsm tree during merging
 
 # Things that are implemented
