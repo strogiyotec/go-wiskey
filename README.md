@@ -18,11 +18,14 @@ decreases write amplification of lsm tree during merging
     - [X] Put
     - [X] Delete
     - [X] Get
-3. [o] Lsm tree
+3. [X] Lsm tree
     - [X] Put 
     - [X] Get
-    - [ ] Delete(partially implemented)
-4. Http interface 
+    - [X] Delete
+4. [ ] Http interface 
+5. [ ] Crash recovery
+    - [ ] Store the last head position in the separate file
+    - [ ] Store al values from head to tail into the memtable during recovery
    
 # TODO
 Reimplement delete to store deleted values in vlog instead of meta byte in sstable
