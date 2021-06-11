@@ -27,19 +27,10 @@ func (memtable *Memtable) Flush(writer *SSTableWriter) error {
 	iterator.Begin()
 	for iterator.Next() {
 		key := iterator.Key().(string)
-		//if deleted then value stores tombstone string instead of vlog offset
-		_, ok := iterator.Value().(string)
-		if ok {
-			_, err := writer.WriteEntry(DeletedSstableEntry([]byte(key)))
-			if err != nil {
-				return err
-			}
-		} else {
-			valueMeta := iterator.Value().(*ValueMeta)
-			_, err := writer.WriteEntry(NewSStableEntry([]byte(key), valueMeta))
-			if err != nil {
-				return err
-			}
+		valueMeta := iterator.Value().(*ValueMeta)
+		_, err := writer.WriteEntry(NewSStableEntry([]byte(key), valueMeta))
+		if err != nil {
+			return err
 		}
 	}
 	err := writer.Close()
@@ -56,9 +47,6 @@ func (memtable *Memtable) Put(key []byte, value *ValueMeta) error {
 	}
 	memtable.tree.Put(string(key), value)
 	memtable.increaseSize(key)
-	if memtable.isFull() {
-
-	}
 	return nil
 }
 
@@ -71,15 +59,11 @@ func (memtable *Memtable) Get(key []byte) (*ValueMeta, bool) {
 	}
 }
 
-func (memtable *Memtable) Delete(key []byte) {
-	memtable.tree.Put(string(key), tombstone)
-}
-
 func (memtable *Memtable) isFull() bool {
 	return memtable.size > memtable.maxSize
 }
 
 func (memtable *Memtable) increaseSize(key []byte) {
 	memtable.size += len(key)
-	memtable.size += uint32Size * 2 //add offset + length from the meta
+	memtable.size += uint32Size * 2 //add offset + length from the vlog
 }

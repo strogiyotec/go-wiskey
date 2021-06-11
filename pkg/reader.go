@@ -21,9 +21,8 @@ type SSTableReader struct {
 //1. readKeyLength
 //2. readKey
 //3. read timestamp
-//4. read meta
-//5. read value offset
-//6. read value length
+//4. read value offset
+//5. read value length
 func NewReader(reader *os.File, offset int64) *SSTableReader {
 	reader.Seek(offset, 0)
 	return &SSTableReader{reader: reader}
@@ -49,12 +48,6 @@ func (tableReader *SSTableReader) readTimestamp() uint64 {
 	timestamp := make([]byte, int64Size)
 	tableReader.reader.Read(timestamp)
 	return binary.BigEndian.Uint64(timestamp)
-}
-func (tableReader *SSTableReader) readMeta() byte {
-	tableReader.offset += 1
-	meta := make([]byte, 1)
-	tableReader.reader.Read(meta)
-	return meta[0]
 }
 func (tableReader *SSTableReader) readValueOffset() uint32 {
 	tableReader.offset += uint32Size

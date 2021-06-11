@@ -18,17 +18,9 @@ type SSTable struct {
 type SearchEntry struct {
 	key       []byte
 	value     []byte
-	deleted   byte
 	timestamp uint64
 }
 
-func NewDeletedEntry(key []byte, timestamp uint64) *SearchEntry {
-	return &SearchEntry{
-		key:       key,
-		deleted:   deleted,
-		timestamp: timestamp,
-	}
-}
 
 //Constructor
 func ReadTable(reader *os.File, log *vlog) *SSTable {
@@ -85,7 +77,7 @@ func (table *SSTable) binarySearch(key []byte) (*SearchEntry, bool) {
 		keyBuffer := tableReader.readKey(fileKeyLength)
 		compare := bytes.Compare(key, keyBuffer)
 		if compare == 0 {
-			return table.fetchFromVlog(tableReader, keyBuffer), true
+			return table.fetchFromVlog(tableReader), true
 		} else if compare > 0 {
 			left = middle + 1
 		} else {
@@ -98,25 +90,21 @@ func (table *SSTable) binarySearch(key []byte) (*SearchEntry, bool) {
 		keyLength := tableReader.readKeyLength()
 		fileKey := tableReader.readKey(keyLength)
 		if bytes.Compare(key, fileKey) == 0 {
-			return table.fetchFromVlog(tableReader, fileKey), true
+			return table.fetchFromVlog(tableReader), true
 		}
 	}
 	return nil, false
 }
 
-func (table *SSTable) fetchFromVlog(tableReader *SSTableReader, key []byte) *SearchEntry {
+func (table *SSTable) fetchFromVlog(tableReader *SSTableReader) *SearchEntry {
 	timestamp := tableReader.readTimestamp()
-	meta := tableReader.readMeta()
-	if meta == deleted {
-		return NewDeletedEntry(key, timestamp)
-	}
 	offset := tableReader.readValueOffset()
 	length := tableReader.readValueLength()
 	get, err := table.log.Get(ValueMeta{length: length, offset: offset})
 	if err != nil {
 		panic(err)
 	}
-	return &SearchEntry{key: get.key, value: get.value, deleted: nonDeleted, timestamp: timestamp}
+	return &SearchEntry{key: get.key, value: get.value, timestamp: timestamp}
 }
 
 func (table *SSTable) find(key []byte, index tableIndex) (int, *SearchEntry) {
@@ -132,7 +120,7 @@ func (table *SSTable) find(key []byte, index tableIndex) (int, *SearchEntry) {
 	compare := bytes.Compare(key, keyBuffer)
 	//they are equal
 	if compare == 0 {
-		return 0, table.fetchFromVlog(tableReader, keyBuffer)
+		return 0, table.fetchFromVlog(tableReader)
 	}
 	return compare, nil
 }

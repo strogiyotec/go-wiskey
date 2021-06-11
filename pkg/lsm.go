@@ -1,6 +1,9 @@
 package wiskey
 
-import "os"
+import (
+	"bytes"
+	"os"
+)
 
 type lsmTree struct {
 	sstableDir string    //directory with sstables
@@ -25,12 +28,13 @@ func (lsm *lsmTree) Get(key []byte) ([]byte, bool) {
 	} else {
 		//if not in memory then try to find in sstables
 		//multiple sstables can have the same key
-		//choose the one with latest timestamp
+		//choose the one with the latest timestamp
 		foundEntry, found := lsm.findInSStables(key)
 		if !found {
 			return nil, false
 		} else {
-			if foundEntry.deleted == deleted {
+			//if the value in vlog is tombstone it means that value was deleted
+			if len(foundEntry.value) == len(tombstone) && bytes.Compare(foundEntry.value, []byte(tombstone)) == 0 {
 				return nil, false
 			} else {
 				return foundEntry.value, true
@@ -39,17 +43,9 @@ func (lsm *lsmTree) Get(key []byte) ([]byte, bool) {
 	}
 }
 
-//save entry in vlog first then in sstable
-//TODO: should it be saved in vlog ?
+//Save tombstone in vlog
 func (lsm *lsmTree) Delete(key []byte) error {
-	lsm.memtable.Delete(key)
-	if lsm.memtable.isFull() {
-		err := lsm.Flush()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	return lsm.Put(DeletedEntry(key))
 }
 
 //save entry in vlog first then in sstable
