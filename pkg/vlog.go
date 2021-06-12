@@ -22,7 +22,11 @@ func NewVlog(file string, checkpoint string) *vlog {
 //Save the latest vlog head position in the checkpoint file
 func (log *vlog) FlushHead() error {
 	writer, err := os.OpenFile(log.checkpoint, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		return err
+	}
 	defer writer.Close()
+	err = writer.Truncate(0)
 	if err != nil {
 		return err
 	}
@@ -67,6 +71,10 @@ func (log *vlog) RestoreTo(headOffset uint32, memtable *Memtable) error {
 		return err
 	}
 	length := stat.Size() - int64(headOffset)
+	if length == 0 {
+		//head is the tail
+		return nil
+	}
 	buffer := make([]byte, length)
 	_, err = reader.Read(buffer)
 	if err != nil {
@@ -89,6 +97,7 @@ func (log *vlog) RestoreTo(headOffset uint32, memtable *Memtable) error {
 		lastPosition += int(keyLength)
 		lastPosition += int(valueLength)
 	}
+	log.size = uint32(stat.Size())
 	return log.FlushHead()
 }
 

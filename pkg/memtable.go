@@ -55,6 +55,10 @@ func (memtable *Memtable) Get(key []byte) (*ValueMeta, bool) {
 	}
 }
 
+func (memtable *Memtable) Size() int {
+	return memtable.tree.Size()
+}
+
 func (memtable *Memtable) isFull() bool {
 	return memtable.size > memtable.maxSize
 }

@@ -118,7 +118,7 @@ func (lsm *lsmTree) findInSStables(key []byte) (*SearchEntry, bool) {
 }
 
 func (lsm *lsmTree) restore() error {
-	reader, err := os.OpenFile(lsm.log.file, os.O_RDONLY, 0666)
+	reader, err := os.OpenFile(lsm.log.checkpoint, os.O_RDONLY, 0666)
 	//if file doesn't exist
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
