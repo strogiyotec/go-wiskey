@@ -24,7 +24,7 @@ func InitTestLsmWithMeta() *lsmTree {
 	tempDir, _ := ioutil.TempDir("", "")
 	vlogFile, _ := ioutil.TempFile("", "")
 	checkpoint, _ := ioutil.TempFile("", "")
-	vlog := NewVlog(vlogFile.Name(),checkpoint.Name())
+	vlog := NewVlog(vlogFile.Name(), checkpoint.Name())
 	return NewLsmTree(vlog, tempDir, NewMemTable(100))
 }
 
@@ -119,7 +119,6 @@ func TestLsmTree_GetInMemory(t *testing.T) {
 	}
 }
 
-
 func TestLsmTree_Restore(t *testing.T) {
 	tree := InitTestLsmWithMeta()
 	defer os.RemoveAll(tree.sstableDir)
@@ -127,12 +126,33 @@ func TestLsmTree_Restore(t *testing.T) {
 	defer os.Remove(tree.log.checkpoint)
 	entries := FakeEntries()
 	//save entries but don't flush
-	for _, entry := range entries {
+	for index, entry := range entries {
 		err := tree.Put(&entry)
 		if err != nil {
 			t.Fatal(err)
 		}
+		//flush the first half of the tree
+		if index == len(entries)/2 {
+			err := tree.Flush()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	//now before flush we create a new lsm tree
-	//TODO: finish
+	vlog := NewVlog(tree.log.file, tree.log.checkpoint)
+	//this tree has to have last half of entries restored from the vlog
+	newTree := NewLsmTree(vlog, tree.sstableDir, NewMemTable(100))
+	for index := len(entries)/2 + 1; index < len(entries); index++ {
+		_, found := newTree.Get(entries[index].key)
+		if !found {
+			t.Fatal("Didn't restore the key from vlog")
+		}
+	}
+	//now if we try to restore it again , memtable has to be empty cause it was restored previously
+	vlog = NewVlog(tree.log.file, tree.log.checkpoint)
+	newTree = NewLsmTree(vlog, tree.sstableDir, NewMemTable(100))
+	if newTree.memtable.Size() != 0 {
+			t.Fatal("Should not restore any entries")
+	}
 }
