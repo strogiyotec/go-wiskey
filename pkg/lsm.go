@@ -2,6 +2,8 @@ package wiskey
 
 import (
 	"bytes"
+	"encoding/binary"
+	"errors"
 	"os"
 )
 
@@ -13,7 +15,12 @@ type lsmTree struct {
 }
 
 func NewLsmTree(log *vlog, sstableDir string, memtable *Memtable) *lsmTree {
-	return &lsmTree{log: log, sstableDir: sstableDir, memtable: memtable}
+	lsm := &lsmTree{log: log, sstableDir: sstableDir, memtable: memtable}
+	err := lsm.restore()
+	if err != nil{
+		panic(err)
+	}
+	return lsm
 }
 
 func (lsm *lsmTree) Get(key []byte) ([]byte, bool) {
@@ -79,6 +86,14 @@ func (lsm *lsmTree) Flush() error {
 	if err != nil {
 		return err
 	}
+	err = writer.Close()
+	if err != nil {
+		return err
+	}
+	err = lsm.log.FlushHead()
+	if err != nil {
+		return err
+	}
 	lsm.sstables = append(lsm.sstables, sstablePath)
 	return nil
 }
@@ -100,4 +115,30 @@ func (lsm *lsmTree) findInSStables(key []byte) (*SearchEntry, bool) {
 		}
 	}
 	return latestEntry, latestEntry != nil
+}
+
+func (lsm *lsmTree) restore() error {
+	reader, err := os.OpenFile(lsm.log.file, os.O_RDONLY, 0666)
+	//if file doesn't exist
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else {
+		defer reader.Close()
+		stat, err := reader.Stat()
+		if err != nil {
+			return err
+		}
+		//if empty => skip
+		if stat.Size() == int64(0) {
+			return nil
+		} else {
+			headBuffer := make([]byte, uint32Size)
+			_, err := reader.Read(headBuffer)
+			if err != nil {
+				return err
+			}
+			headOffset := binary.BigEndian.Uint32(headBuffer)
+			return lsm.log.RestoreTo(headOffset, lsm.memtable)
+		}
+	}
 }

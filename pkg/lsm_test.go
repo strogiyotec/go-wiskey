@@ -23,7 +23,8 @@ func FakeEntries() []TableEntry {
 func InitTestLsmWithMeta() *lsmTree {
 	tempDir, _ := ioutil.TempDir("", "")
 	vlogFile, _ := ioutil.TempFile("", "")
-	vlog := NewVlog(vlogFile.Name())
+	checkpoint, _ := ioutil.TempFile("", "")
+	vlog := NewVlog(vlogFile.Name(),checkpoint.Name())
 	return NewLsmTree(vlog, tempDir, NewMemTable(100))
 }
 
@@ -31,6 +32,7 @@ func TestLsmTree_GetDeletedValue(t *testing.T) {
 	tree := InitTestLsmWithMeta()
 	defer os.RemoveAll(tree.sstableDir)
 	defer os.Remove(tree.log.file)
+	defer os.Remove(tree.log.checkpoint)
 	key := []byte("ANITA")
 	value := []byte("DEVELOPER")
 	//save entry and flush to sstable
@@ -62,6 +64,7 @@ func TestLsmTree_PutAndGetFromSSTable(t *testing.T) {
 	tree := InitTestLsmWithMeta()
 	defer os.RemoveAll(tree.sstableDir)
 	defer os.Remove(tree.log.file)
+	defer os.Remove(tree.log.checkpoint)
 	entries := FakeEntries()
 	//save entries in unsorted order, it will be sorted by memtable
 	for _, entry := range entries {
@@ -96,6 +99,7 @@ func TestLsmTree_GetInMemory(t *testing.T) {
 	tree := InitTestLsmWithMeta()
 	defer os.RemoveAll(tree.sstableDir)
 	defer os.Remove(tree.log.file)
+	defer os.Remove(tree.log.checkpoint)
 	entries := FakeEntries()
 	//save entries but don't flush
 	for _, entry := range entries {
@@ -113,4 +117,22 @@ func TestLsmTree_GetInMemory(t *testing.T) {
 			t.Fatal("Values don't match")
 		}
 	}
+}
+
+
+func TestLsmTree_Restore(t *testing.T) {
+	tree := InitTestLsmWithMeta()
+	defer os.RemoveAll(tree.sstableDir)
+	defer os.Remove(tree.log.file)
+	defer os.Remove(tree.log.checkpoint)
+	entries := FakeEntries()
+	//save entries but don't flush
+	for _, entry := range entries {
+		err := tree.Put(&entry)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	//now before flush we create a new lsm tree
+	//TODO: finish
 }

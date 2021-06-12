@@ -33,10 +33,6 @@ func (memtable *Memtable) Flush(writer *SSTableWriter) error {
 			return err
 		}
 	}
-	err := writer.Close()
-	if err != nil {
-		return err
-	}
 	memtable.tree.Clear()
 	return nil
 }
