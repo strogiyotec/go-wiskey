@@ -16,3 +16,9 @@ wiskey
 # Dependency directories (remove the comment below to include it)
 # vendor/
 .idea
+
+
+#config files
+vlog
+checkpoint
+sstable
