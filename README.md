@@ -22,11 +22,20 @@ decreases write amplification of lsm tree during merging
     - [X] Put 
     - [X] Get
     - [X] Delete
-4. [ ] Http interface 
+4. [X] Http interface 
+    - [X] Http Get
+    - [X] Http Put
+    - [X] Http Delete
 5. [X] Crash recovery
     - [X] Store the last head position in the separate file
     - [X] Store al values from head to tail into the memtable during recovery
 6. [ ] Merge sstable files
-
+7. [o] Cli interface
+    - [X] specify sstable path 
+    - [X] specify vlog path
+    - [X] specify checkpoint path
+    - [ ] specify memtable size
+    - [ ] specify sstable size
+      
 
     
