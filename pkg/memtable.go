@@ -34,6 +34,7 @@ func (memtable *Memtable) Flush(writer *SSTableWriter) error {
 		}
 	}
 	memtable.tree.Clear()
+	memtable.size = 0
 	return nil
 }
 

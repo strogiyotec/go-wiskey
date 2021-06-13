@@ -34,7 +34,7 @@ func (log *vlog) FlushHead() error {
 }
 
 func (log *vlog) Get(meta ValueMeta) (*TableEntry, error) {
-	reader, err := os.OpenFile(log.file, os.O_RDONLY, 0666)
+	reader, err := os.OpenFile(log.file, os.O_RDONLY|os.O_CREATE, 0666)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +57,7 @@ func (log *vlog) Gc(tailLength uint) {
 
 //Restore vlog to given memtable
 func (log *vlog) RestoreTo(headOffset uint32, memtable *Memtable) error {
-	reader, err := os.OpenFile(log.file, os.O_RDONLY, 0666)
+	reader, err := os.OpenFile(log.file, os.O_RDONLY|os.O_CREATE, 0666)
 	if err != nil {
 		return err
 	}
@@ -87,7 +87,7 @@ func (log *vlog) RestoreTo(headOffset uint32, memtable *Memtable) error {
 		valueLength := binary.BigEndian.Uint32(buffer[lastPosition+4 : lastPosition+8])
 		key := buffer[lastPosition+8 : lastPosition+8+int(keyLength)]
 		metaLength := uint32Size + uint32Size + int(keyLength) + int(valueLength)
-		err := memtable.Put(key, &ValueMeta{length: uint32(metaLength), offset: nextOffset})
+		err := memtable.Put(key, &ValueMeta{length: uint32(metaLength), offset: nextOffset+headOffset})
 		if err != nil {
 			return err
 		}
@@ -98,14 +98,14 @@ func (log *vlog) RestoreTo(headOffset uint32, memtable *Memtable) error {
 		lastPosition += int(valueLength)
 	}
 	log.size = uint32(stat.Size())
-	return log.FlushHead()
+	return nil
 }
 
 //Append new entry to the head of vlog
 //the binary format for entry is [klength,vlength,key,value]
 //we store key in vlog for garbage collection purposes
 func (log *vlog) Append(entry *TableEntry) (*ValueMeta, error) {
-	writer, err := os.OpenFile(log.file, os.O_APPEND|os.O_WRONLY, 0666)
+	writer, err := os.OpenFile(log.file, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		return nil, err
 	}

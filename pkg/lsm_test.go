@@ -20,7 +20,7 @@ func FakeEntries() []TableEntry {
 	}
 }
 
-func InitTestLsmWithMeta() *lsmTree {
+func InitTestLsmWithMeta() *LsmTree {
 	tempDir, _ := ioutil.TempDir("", "")
 	vlogFile, _ := ioutil.TempFile("", "")
 	checkpoint, _ := ioutil.TempFile("", "")
