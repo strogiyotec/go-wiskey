@@ -44,12 +44,13 @@ In order to install the binary run `go get github.com/strogiyotec/go-wiskey` , i
 
 ## Usage 
 In order to start the app run 
-`wiskey -s ../go-wiskey/sstable -v vlog  -c checkpoint`
+`wiskey -s ../go-wiskey/sstable -v vlog  -c checkpoint -m 20`
 where :
 
-1. `-s` - directory with sstables(directory must exist)
+1. `-s` - directory with sstables
 2. `-v` - path to vlog file(vlog doesn't have to exist)
 3. `-c` - path to checkpoint (checkpoint doesn't have to exist)
+4. `-m` - memtable size in bytes(the size of in memory red black tree that keeps keys , when full will flush this tree to sstable)
 
 It will start an http server
 
