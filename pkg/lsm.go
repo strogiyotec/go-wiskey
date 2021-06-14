@@ -25,6 +25,13 @@ func NewLsmTree(log *vlog, sstableDir string, memtable *Memtable) *LsmTree {
 		memtable:   memtable,
 		deleted:    make(map[string]bool),
 	}
+	//create sstable path if doesn't exist
+	if _, err := os.Stat(sstableDir); os.IsNotExist(err) {
+		err := os.Mkdir(sstableDir, os.ModeDir|0755)
+		if err != nil {
+			panic(err)
+		}
+	}
 	lsm.fillSstables()
 	err := lsm.restore()
 	if err != nil {
@@ -67,13 +74,16 @@ func (lsm *LsmTree) Get(key []byte) ([]byte, bool) {
 
 //Save tombstone in vlog
 func (lsm *LsmTree) Delete(key []byte) error {
+	_, ok := lsm.deleted[string(key)]
+	//already deleted and it's still in memory
+	if ok {
+		return nil
+	}
 	lsm.deleted[string(key)] = true
-	return lsm.Put(DeletedEntry(key))
+	return lsm.save(DeletedEntry(key))
 }
 
-//save entry in vlog first then in sstable
-func (lsm *LsmTree) Put(entry *TableEntry) error {
-	delete(lsm.deleted, string(entry.key))
+func (lsm *LsmTree) save(entry *TableEntry) error {
 	meta, err := lsm.log.Append(entry)
 	if err != nil {
 		return err
@@ -89,6 +99,13 @@ func (lsm *LsmTree) Put(entry *TableEntry) error {
 		}
 	}
 	return nil
+}
+
+//save entry in vlog first then in sstable
+func (lsm *LsmTree) Put(entry *TableEntry) error {
+	//before put let's delete this key from deleted map
+	delete(lsm.deleted, string(entry.key))
+	return lsm.save(entry)
 }
 
 //Flush in memory red black tree to sstable on disk
@@ -160,6 +177,7 @@ func (lsm *LsmTree) restore() error {
 	}
 }
 
+//save all sstable paths in memory
 func (lsm *LsmTree) fillSstables() {
 	//if sstable dir exists then try to get all sstable files from it
 	if _, err := os.Stat(lsm.sstableDir); !os.IsNotExist(err) {
