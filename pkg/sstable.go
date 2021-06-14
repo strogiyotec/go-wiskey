@@ -10,6 +10,7 @@ type indexes []tableIndex
 
 const (
 	sstableExtension = ".sstable$"
+	sstableFileLength = 10
 )
 
 type SSTable struct {

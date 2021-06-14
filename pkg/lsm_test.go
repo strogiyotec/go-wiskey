@@ -149,10 +149,20 @@ func TestLsmTree_Restore(t *testing.T) {
 			t.Fatal("Didn't restore the key from vlog")
 		}
 	}
-	//now if we try to restore it again , memtable has to be empty cause it was restored previously
+	//if we try to restore it again it will be restored because we didn't flush a previous one
+	vlog = NewVlog(tree.log.file, tree.log.checkpoint)
+	newTree = NewLsmTree(vlog, tree.sstableDir, NewMemTable(100))
+	if newTree.memtable.Size() == 0 {
+		t.Fatal("Should restore not flushed entries")
+	}
+	err := newTree.Flush()
+	if err != nil {
+		t.Fatal(err)
+	}
+	//now it was flushed so memtable has to be empty
 	vlog = NewVlog(tree.log.file, tree.log.checkpoint)
 	newTree = NewLsmTree(vlog, tree.sstableDir, NewMemTable(100))
 	if newTree.memtable.Size() != 0 {
-			t.Fatal("Should not restore any entries")
+		t.Fatal("Memtable has to be empty after flush")
 	}
 }

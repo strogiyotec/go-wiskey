@@ -26,7 +26,7 @@ func NewFooter(buffer []byte) *Footer {
 	if len(buffer) != footerSize {
 		panic("Invalid header length")
 	}
-	offset := binary.BigEndian.Uint32(buffer[:4])
+	offset := binary.BigEndian.Uint32(buffer[:footerSize])
 	return &Footer{indexOffset: offset}
 }
 

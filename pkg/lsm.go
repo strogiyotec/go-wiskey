@@ -93,7 +93,7 @@ func (lsm *LsmTree) Put(entry *TableEntry) error {
 
 //Flush in memory red black tree to sstable on disk
 func (lsm *LsmTree) Flush() error {
-	sstablePath := lsm.sstableDir + "/" + RandStringBytes(10) + ".sstable"
+	sstablePath := lsm.sstableDir + "/" + RandStringBytes(sstableFileLength) + ".sstable"
 	file, err := os.OpenFile(sstablePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		return err

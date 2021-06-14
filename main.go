@@ -12,7 +12,7 @@ func main() {
 		panic(err)
 	}
 	vlog := NewVlog(parse.Vlog, parse.Checkpoint)
-	memtable := NewMemTable(20)
+	memtable := NewMemTable(parse.MemtableSize)
 	tree := NewLsmTree(vlog, parse.SStablePath, memtable)
 	http.Start(tree)
 

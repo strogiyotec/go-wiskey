@@ -7,10 +7,6 @@ import (
 	"time"
 )
 
-const (
-	deleted    = 1
-	nonDeleted = 0
-)
 
 // SSTABLE Entry
 type sstableEntry struct {
