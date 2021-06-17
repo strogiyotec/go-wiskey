@@ -1,7 +1,7 @@
 package wiskey
 
 import (
-	"encoding/binary"
+	binary "encoding/binary"
 	"os"
 )
 
@@ -33,6 +33,10 @@ func (log *vlog) FlushHead() error {
 	return binary.Write(writer, binary.BigEndian, log.size)
 }
 
+// Example of vlog entry to read
+//+------------+--------------+-----+-------+
+//| Key Length | Value length | Key | Value |
+//+------------+--------------+-----+-------+
 func (log *vlog) Get(meta ValueMeta) (*TableEntry, error) {
 	reader, err := os.OpenFile(log.file, os.O_RDONLY|os.O_CREATE, 0666)
 	if err != nil {
@@ -51,10 +55,33 @@ func (log *vlog) Get(meta ValueMeta) (*TableEntry, error) {
 //Run garbage collector
 //Read tailLength entries from the start of vlog
 //Check if they were deleted, if no append them to head
-func (log *vlog) Gc(tailLength uint) {
-
+//Params: entries - how many entries to read from gc
+//Need to implement sstable merge first
+/*func (log *vlog) Gc(entries uint, sstable *SSTable) error {
+	file, err := os.OpenFile(log.file, os.O_RDONLY|os.O_APPEND, 0666)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	stat, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	totalSize := stat.Size()
+	currentSize := int64(0)
+	for currentSize < totalSize {
+		keyLengthBuffer := make([]byte, uint32Size)
+		//read key length
+		file.Read(keyLengthBuffer)
+		keyLength := binary.BigEndian.Uint32(keyLengthBuffer)
+		valueLengthBuffer := make([]byte, uint32Size)
+		//read key length
+		file.Read(valueLengthBuffer)
+		valueLength := binary.BigEndian.Uint32(valueLengthBuffer)
+	}
+	return binary.BigEndian.Uint32(keyLengthBuffer)
 }
-
+*/
 //Restore vlog to given memtable
 func (log *vlog) RestoreTo(headOffset uint32, memtable *Memtable) error {
 	reader, err := os.OpenFile(log.file, os.O_RDONLY|os.O_CREATE, 0666)
@@ -87,7 +114,7 @@ func (log *vlog) RestoreTo(headOffset uint32, memtable *Memtable) error {
 		valueLength := binary.BigEndian.Uint32(buffer[lastPosition+4 : lastPosition+8])
 		key := buffer[lastPosition+8 : lastPosition+8+int(keyLength)]
 		metaLength := uint32Size + uint32Size + int(keyLength) + int(valueLength)
-		err := memtable.Put(key, &ValueMeta{length: uint32(metaLength), offset: nextOffset+headOffset})
+		err := memtable.Put(key, &ValueMeta{length: uint32(metaLength), offset: nextOffset + headOffset})
 		if err != nil {
 			return err
 		}
@@ -104,6 +131,10 @@ func (log *vlog) RestoreTo(headOffset uint32, memtable *Memtable) error {
 //Append new entry to the head of vlog
 //the binary format for entry is [klength,vlength,key,value]
 //we store key in vlog for garbage collection purposes
+// Example of signle entry in vlog
+//+------------+--------------+-----+-------+
+//| Key Length | Value length | Key | Value |
+//+------------+--------------+-----+-------+
 func (log *vlog) Append(entry *TableEntry) (*ValueMeta, error) {
 	writer, err := os.OpenFile(log.file, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {

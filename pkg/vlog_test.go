@@ -8,9 +8,12 @@ import (
 
 func TestVlog_Append(t *testing.T) {
 	file, _ := ioutil.TempFile("", "")
+	checkpoint, _ := ioutil.TempFile("", "")
 	defer file.Close()
+	defer checkpoint.Close()
 	defer os.Remove(file.Name())
-	vlog := &vlog{file: file.Name(), size: 0}
+	defer os.Remove(checkpoint.Name())
+	vlog := NewVlog(file.Name(), checkpoint.Name())
 	//test entries
 	entries := FakeEntries()
 	//save entries

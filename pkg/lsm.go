@@ -14,8 +14,22 @@ type LsmTree struct {
 	sstableDir string    //directory with sstables
 	log        *vlog     //vlog
 	memtable   *Memtable //in memory table
-	sstables   []string  //list of created sstables
+	sstables   []string  //list of created sstables,let's change it to set to speed up the search
 	deleted    map[string]bool
+}
+
+func (lsm *LsmTree) Merge() {
+	var newSstableFiles []string
+	index := 0
+	if len(lsm.sstables)%2 == 0 {
+		for index < len(lsm.sstables) {
+			first := lsm.sstables[index]
+			second := lsm.sstables[index+1]
+			lsm.MergeFiles(first, second)
+			index += 2
+		}
+	}
+	lsm.sstables = newSstableFiles
 }
 
 func NewLsmTree(log *vlog, sstableDir string, memtable *Memtable) *LsmTree {
@@ -197,4 +211,14 @@ func (lsm *LsmTree) fillSstables() {
 			panic(err)
 		}
 	}
+}
+
+func (lsm *LsmTree) MergeFiles(first string, second string) {
+	firstReader, _ := os.Open(first)
+	firstSstable := ReadTable(firstReader, lsm.log)
+	secondReader, _ := os.Open(first)
+	secondSstable := ReadTable(secondReader, lsm.log)
+	length := MinInt(len(firstSstable.indexes), len(secondSstable.indexes))
+	//TODO: merge them
+	fmt.Print(length)
 }

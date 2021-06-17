@@ -16,5 +16,11 @@ func RandStringBytes(n int) string {
 		b[i] = letterBytes[seededRand.Intn(len(letterBytes))]
 	}
 	return string(b)
+}
 
+func MinInt(first, second int) int {
+	if first < second {
+		return first
+	}
+	return second
 }

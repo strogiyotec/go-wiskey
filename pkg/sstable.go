@@ -9,7 +9,7 @@ import (
 type indexes []tableIndex
 
 const (
-	sstableExtension = ".sstable$"
+	sstableExtension  = ".sstable$"
 	sstableFileLength = 10
 )
 
@@ -20,11 +20,6 @@ type SSTable struct {
 	log     *vlog
 }
 
-type SearchEntry struct {
-	key       []byte
-	value     []byte
-	timestamp uint64
-}
 
 //Constructor
 func ReadTable(reader *os.File, log *vlog) *SSTable {
@@ -143,4 +138,10 @@ func readIndexes(stats os.FileInfo, reader *os.File, footer Footer) indexes {
 		start += 8
 	}
 	return indexes
+}
+
+type SearchEntry struct {
+	key       []byte
+	value     []byte
+	timestamp uint64
 }
