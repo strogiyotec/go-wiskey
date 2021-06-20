@@ -8,28 +8,18 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
+	"sync"
+	"time"
 )
 
 type LsmTree struct {
+	rwm        sync.RWMutex
 	sstableDir string    //directory with sstables
 	log        *vlog     //vlog
 	memtable   *Memtable //in memory table
 	sstables   []string  //list of created sstables,let's change it to set to speed up the search
 	deleted    map[string]bool
-}
-
-func (lsm *LsmTree) Merge() {
-	var newSstableFiles []string
-	index := 0
-	if len(lsm.sstables)%2 == 0 {
-		for index < len(lsm.sstables) {
-			first := lsm.sstables[index]
-			second := lsm.sstables[index+1]
-			lsm.MergeFiles(first, second)
-			index += 2
-		}
-	}
-	lsm.sstables = newSstableFiles
 }
 
 func NewLsmTree(log *vlog, sstableDir string, memtable *Memtable) *LsmTree {
@@ -52,10 +42,57 @@ func NewLsmTree(log *vlog, sstableDir string, memtable *Memtable) *LsmTree {
 		fmt.Print(err.Error())
 		panic(err)
 	}
+	//run job to periodically merge sstables
+		go func(tree *LsmTree) {
+			fmt.Println("Gc thread was initialized")
+			for true {
+				time.Sleep(30 * time.Second)
+				fmt.Println("SSTABLE GC started")
+				err := lsm.Merge()
+				if err != nil {
+					fmt.Println("Gc encountered an error " + err.Error() + " Stop gc thread")
+					return
+				}
+			}
+		}(lsm)
 	return lsm
 }
 
+func (lsm *LsmTree) Merge() error {
+	lsm.rwm.Lock()
+	defer lsm.rwm.Unlock()
+	var newSstableFiles []string
+	index := 0
+	if len(lsm.sstables)%2 == 0 {
+		for index < len(lsm.sstables) {
+			firstReader, _ := os.Open(lsm.sstables[index])
+			secondReader, _ := os.Open(lsm.sstables[index+1])
+			firstSStable := ReadTable(firstReader, lsm.log)
+			secondSStable := ReadTable(secondReader, lsm.log)
+			filePath, err := lsm.mergeFiles(firstSStable, secondSStable)
+			if err != nil {
+				return err
+			}
+			newSstableFiles = append(newSstableFiles, filePath)
+			firstSStable.Close()
+			secondSStable.Close()
+			err = os.Remove(lsm.sstables[index])
+			if err != nil {
+				return err
+			}
+			err = os.Remove(lsm.sstables[index+1])
+			if err != nil {
+				return err
+			}
+			index += 2
+		}
+	}
+	lsm.sstables = newSstableFiles
+	return nil
+}
 func (lsm *LsmTree) Get(key []byte) ([]byte, bool) {
+	lsm.rwm.RLock()
+	defer lsm.rwm.RUnlock()
 	_, ok := lsm.deleted[string(key)]
 	if ok {
 		return nil, false
@@ -67,7 +104,11 @@ func (lsm *LsmTree) Get(key []byte) ([]byte, bool) {
 		if err != nil {
 			panic(err)
 		}
-		return entry.value, true
+		if len(entry.value) == len(tombstone) && bytes.Compare(entry.value, []byte(tombstone)) == 0 {
+			return nil, false
+		} else {
+			return entry.value, true
+		}
 	} else {
 		//if not in memory then try to find in sstables
 		//multiple sstables can have the same key
@@ -88,6 +129,8 @@ func (lsm *LsmTree) Get(key []byte) ([]byte, bool) {
 
 //Save tombstone in vlog
 func (lsm *LsmTree) Delete(key []byte) error {
+	lsm.rwm.Lock()
+	defer lsm.rwm.Unlock()
 	_, ok := lsm.deleted[string(key)]
 	//already deleted and it's still in memory
 	if ok {
@@ -97,26 +140,10 @@ func (lsm *LsmTree) Delete(key []byte) error {
 	return lsm.save(DeletedEntry(key))
 }
 
-func (lsm *LsmTree) save(entry *TableEntry) error {
-	meta, err := lsm.log.Append(entry)
-	if err != nil {
-		return err
-	}
-	err = lsm.memtable.Put(entry.key, meta)
-	if err != nil {
-		return err
-	}
-	if lsm.memtable.isFull() {
-		err := lsm.Flush()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 //save entry in vlog first then in sstable
 func (lsm *LsmTree) Put(entry *TableEntry) error {
+	lsm.rwm.Lock()
+	defer lsm.rwm.Unlock()
 	//before put let's delete this key from deleted map
 	delete(lsm.deleted, string(entry.key))
 	return lsm.save(entry)
@@ -146,6 +173,23 @@ func (lsm *LsmTree) Flush() error {
 	return nil
 }
 
+func (lsm *LsmTree) save(entry *TableEntry) error {
+	meta, err := lsm.log.Append(entry)
+	if err != nil {
+		return err
+	}
+	err = lsm.memtable.Put(entry.key, meta)
+	if err != nil {
+		return err
+	}
+	if lsm.memtable.isFull() {
+		err := lsm.Flush()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func (lsm *LsmTree) findInSStables(key []byte) (*SearchEntry, bool) {
 	var latestEntry *SearchEntry
 	for _, tablePath := range lsm.sstables {
@@ -213,12 +257,87 @@ func (lsm *LsmTree) fillSstables() {
 	}
 }
 
-func (lsm *LsmTree) MergeFiles(first string, second string) {
-	firstReader, _ := os.Open(first)
-	firstSstable := ReadTable(firstReader, lsm.log)
-	secondReader, _ := os.Open(first)
-	secondSstable := ReadTable(secondReader, lsm.log)
-	length := MinInt(len(firstSstable.indexes), len(secondSstable.indexes))
-	//TODO: merge them
-	fmt.Print(length)
+func (lsm *LsmTree) mergeFiles(first *SSTable, second *SSTable) (string, error) {
+	sstablePath := lsm.sstableDir + "/" + RandStringBytes(sstableFileLength) + ".sstable"
+	file, err := os.OpenFile(sstablePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		return "", err
+	}
+	writer := NewWriter(file, uint32(20))
+	var i1, i2 int
+	for i1 < len(first.indexes) && i2 < len(second.indexes) {
+		firstReader := NewReader(first.reader, int64(first.indexes[i1].Offset))
+		secondReader := NewReader(second.reader, int64(second.indexes[i2].Offset))
+		firstKey := string(firstReader.readKey(firstReader.readKeyLength()))
+		secondKey := string(secondReader.readKey(secondReader.readKeyLength()))
+		compare := strings.Compare(firstKey, secondKey)
+		if compare > 0 {
+			timestamp := secondReader.readTimestamp()
+			offset := secondReader.readValueOffset()
+			length := secondReader.readValueLength()
+			_, err := writer.WriteEntry(&sstableEntry{key: []byte(secondKey), timeStamp: timestamp, valueOffset: offset, valueLength: length})
+			if err != nil {
+				return "", err
+			}
+			i2++
+		} else if compare < 0 {
+			timestamp := firstReader.readTimestamp()
+			offset := firstReader.readValueOffset()
+			length := firstReader.readValueLength()
+			_, err := writer.WriteEntry(&sstableEntry{key: []byte(firstKey), timeStamp: timestamp, valueOffset: offset, valueLength: length})
+			if err != nil {
+				return "", err
+			}
+			i1++
+		} else {
+			firstTm := firstReader.readTimestamp()
+			secondTm := secondReader.readTimestamp()
+			if firstTm > secondTm {
+				offset := firstReader.readValueOffset()
+				length := firstReader.readValueLength()
+				_, err := writer.WriteEntry(&sstableEntry{key: []byte(firstKey), timeStamp: firstTm, valueOffset: offset, valueLength: length})
+				if err != nil {
+					return "", err
+				}
+			} else {
+				offset := secondReader.readValueOffset()
+				length := secondReader.readValueLength()
+				_, err := writer.WriteEntry(&sstableEntry{key: []byte(firstKey), timeStamp: secondTm, valueOffset: offset, valueLength: length})
+				if err != nil {
+					return "", err
+				}
+			}
+			i1++
+			i2++
+		}
+	}
+	for i1 < len(first.indexes) {
+		reader := NewReader(first.reader, int64(first.indexes[i1].Offset))
+		key := reader.readKey(reader.readKeyLength())
+		timestamp := reader.readTimestamp()
+		offset := reader.readValueOffset()
+		length := reader.readValueLength()
+		_, err := writer.WriteEntry(&sstableEntry{key: key, timeStamp: timestamp, valueOffset: offset, valueLength: length})
+		if err != nil {
+			return "", err
+		}
+		i1++
+	}
+	for i2 < len(second.indexes) {
+		reader := NewReader(second.reader, int64(second.indexes[i2].Offset))
+		key := reader.readKey(reader.readKeyLength())
+		timestamp := reader.readTimestamp()
+		offset := reader.readValueOffset()
+		length := reader.readValueLength()
+		_, err := writer.WriteEntry(&sstableEntry{key: key, timeStamp: timestamp, valueOffset: offset, valueLength: length})
+		if err != nil {
+			return "", err
+		}
+		i2++
+	}
+	err = writer.Close()
+	if err != nil {
+		return "", err
+	}
+	return sstablePath, nil
 }
