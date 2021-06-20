@@ -29,14 +29,16 @@ decreases write amplification of lsm tree during merging
 5. [X] Crash recovery
     - [X] Store the last head position in the separate file
     - [X] Store al values from head to tail into the memtable during recovery
-6. [ ] Merge sstable files
-7. [o] Cli interface
+6. [X] Merge sstable files
+7. [ ] Cli interface
     - [X] specify sstable path 
     - [X] specify vlog path
     - [X] specify checkpoint path
     - [ ] specify memtable size
-    - [ ] specify sstable size
-      
+    - [X] specify sstable size
+8. [ ] Cleanup
+    - [X] Merge sstables
+    - [ ] Garbage collect vlog
 
 ## Install
 In order to install the binary run `go get github.com/strogiyotec/go-wiskey` , it will be installed in `$HOME/go/bin/wiskey`
