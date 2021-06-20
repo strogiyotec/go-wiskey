@@ -61,3 +61,8 @@ In order to GET/UPDATE/DELETE you can use http endpoints
 1. Save key value - `curl -X POST -H "Content-Type: application/json" -d '{"value":"Developer"}' http://localhost:8080/anita` it will save value `Developer` with a key `anita`
 2. Get by key - `curl -i localhost:8080/fetch/anita`
 3. Delete by key - `curl -i localhost:8080/fetch/anita`
+
+
+### How it works
+Here is the general image on how the storage works
+![storage](https://raw.githubusercontent.com/strogiyotec/go-wiskey/master/images/Architecture.jpg)
