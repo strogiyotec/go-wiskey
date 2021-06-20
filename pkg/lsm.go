@@ -22,7 +22,7 @@ type LsmTree struct {
 	deleted    map[string]bool
 }
 
-func NewLsmTree(log *vlog, sstableDir string, memtable *Memtable) *LsmTree {
+func NewLsmTree(log *vlog, sstableDir string, memtable *Memtable, gc uint) *LsmTree {
 	lsm := &LsmTree{
 		log:        log,
 		sstableDir: sstableDir,
@@ -43,18 +43,18 @@ func NewLsmTree(log *vlog, sstableDir string, memtable *Memtable) *LsmTree {
 		panic(err)
 	}
 	//run job to periodically merge sstables
-		go func(tree *LsmTree) {
-			fmt.Println("Gc thread was initialized")
-			for true {
-				time.Sleep(30 * time.Second)
-				fmt.Println("SSTABLE GC started")
-				err := lsm.Merge()
-				if err != nil {
-					fmt.Println("Gc encountered an error " + err.Error() + " Stop gc thread")
-					return
-				}
+	go func(tree *LsmTree, gc uint) {
+		fmt.Println("Gc thread was initialized")
+		for true {
+			time.Sleep(time.Duration(gc) * time.Second)
+			fmt.Println("SSTABLE GC started")
+			err := lsm.Merge()
+			if err != nil {
+				fmt.Println("Gc encountered an error " + err.Error() + " Stop gc thread")
+				return
 			}
-		}(lsm)
+		}
+	}(lsm, gc)
 	return lsm
 }
 

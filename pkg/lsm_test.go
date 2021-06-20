@@ -20,16 +20,16 @@ func FakeEntries() []TableEntry {
 	}
 }
 
-func InitTestLsmWithMeta() *LsmTree {
+func InitTestLsmWithMeta(size int, gc uint) *LsmTree {
 	tempDir, _ := ioutil.TempDir("", "")
 	vlogFile, _ := ioutil.TempFile("", "")
 	checkpoint, _ := ioutil.TempFile("", "")
 	vlog := NewVlog(vlogFile.Name(), checkpoint.Name())
-	return NewLsmTree(vlog, tempDir, NewMemTable(100))
+	return NewLsmTree(vlog, tempDir, NewMemTable(size), gc)
 }
 
 func TestLsmTree_GetDeletedValue(t *testing.T) {
-	tree := InitTestLsmWithMeta()
+	tree := InitTestLsmWithMeta(100, 30)
 	defer os.RemoveAll(tree.sstableDir)
 	defer os.Remove(tree.log.file)
 	defer os.Remove(tree.log.checkpoint)
@@ -61,7 +61,7 @@ func TestLsmTree_GetDeletedValue(t *testing.T) {
 }
 
 func TestLsmTree_PutAndGetFromSSTable(t *testing.T) {
-	tree := InitTestLsmWithMeta()
+	tree := InitTestLsmWithMeta(100, 30)
 	defer os.RemoveAll(tree.sstableDir)
 	defer os.Remove(tree.log.file)
 	defer os.Remove(tree.log.checkpoint)
@@ -96,7 +96,7 @@ func TestLsmTree_PutAndGetFromSSTable(t *testing.T) {
 
 //Test get when in memory
 func TestLsmTree_GetInMemory(t *testing.T) {
-	tree := InitTestLsmWithMeta()
+	tree := InitTestLsmWithMeta(100, 30)
 	defer os.RemoveAll(tree.sstableDir)
 	defer os.Remove(tree.log.file)
 	defer os.Remove(tree.log.checkpoint)
@@ -119,8 +119,50 @@ func TestLsmTree_GetInMemory(t *testing.T) {
 	}
 }
 
+func TestLsmTree_Merge(t *testing.T) {
+	//init lsm with merge time 5 sec
+	tree := InitTestLsmWithMeta(20, 4)
+	defer os.RemoveAll(tree.sstableDir)
+	defer os.Remove(tree.log.file)
+	defer os.Remove(tree.log.checkpoint)
+	entries := FakeEntries()
+	//save entries ,because size is only 20 it had to be flushed
+	savedCnt := 0
+	for _, entry := range entries {
+		savedCnt++
+		err := tree.Put(&entry)
+		if err != nil {
+			t.Fatal(err)
+		}
+		//store exactly 2 sstables
+		if len(tree.sstables) == 2 {
+			break
+		}
+	}
+	amount := len(tree.sstables)
+	if amount < 1 {
+		t.Fatal("Amount of sstables has to be at least 1")
+	}
+	//wait for merge
+	time.Sleep(6 * time.Second)
+	sizeAfterGc := len(tree.sstables)
+	if sizeAfterGc*2 != amount {
+		t.Fatal("Amount of sstables after merge had to be decreased by 2 times")
+	}
+	for _, entry := range entries {
+		if savedCnt == 0 {
+			break
+		}
+		savedCnt--
+		_, found := tree.Get(entry.key)
+		if !found {
+			t.Fatal("Wasn't able to find key after merge")
+		}
+	}
+}
+
 func TestLsmTree_Restore(t *testing.T) {
-	tree := InitTestLsmWithMeta()
+	tree := InitTestLsmWithMeta(100, 30)
 	defer os.RemoveAll(tree.sstableDir)
 	defer os.Remove(tree.log.file)
 	defer os.Remove(tree.log.checkpoint)
@@ -142,7 +184,7 @@ func TestLsmTree_Restore(t *testing.T) {
 	//now before flush we create a new lsm tree
 	vlog := NewVlog(tree.log.file, tree.log.checkpoint)
 	//this tree has to have last half of entries restored from the vlog
-	newTree := NewLsmTree(vlog, tree.sstableDir, NewMemTable(100))
+	newTree := NewLsmTree(vlog, tree.sstableDir, NewMemTable(100), 30)
 	for index := len(entries)/2 + 1; index < len(entries); index++ {
 		_, found := newTree.Get(entries[index].key)
 		if !found {
@@ -151,7 +193,7 @@ func TestLsmTree_Restore(t *testing.T) {
 	}
 	//if we try to restore it again it will be restored because we didn't flush a previous one
 	vlog = NewVlog(tree.log.file, tree.log.checkpoint)
-	newTree = NewLsmTree(vlog, tree.sstableDir, NewMemTable(100))
+	newTree = NewLsmTree(vlog, tree.sstableDir, NewMemTable(100), 30)
 	if newTree.memtable.Size() == 0 {
 		t.Fatal("Should restore not flushed entries")
 	}
@@ -161,7 +203,7 @@ func TestLsmTree_Restore(t *testing.T) {
 	}
 	//now it was flushed so memtable has to be empty
 	vlog = NewVlog(tree.log.file, tree.log.checkpoint)
-	newTree = NewLsmTree(vlog, tree.sstableDir, NewMemTable(100))
+	newTree = NewLsmTree(vlog, tree.sstableDir, NewMemTable(100), 30)
 	if newTree.memtable.Size() != 0 {
 		t.Fatal("Memtable has to be empty after flush")
 	}

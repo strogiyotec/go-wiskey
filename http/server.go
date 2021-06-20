@@ -12,6 +12,7 @@ type Value struct {
 
 func Start(lsm *LsmTree) {
 	router := gin.New()
+	//delete key
 	router.DELETE("/:key", func(c *gin.Context) {
 		key := c.Param("key")
 		err := lsm.Delete([]byte(key))
@@ -21,6 +22,7 @@ func Start(lsm *LsmTree) {
 			c.Status(http.StatusAccepted)
 		}
 	})
+	//get key
 	router.GET("/fetch/:key", func(c *gin.Context) {
 		key := c.Param("key")
 		value, found := lsm.Get([]byte(key))
@@ -30,6 +32,7 @@ func Start(lsm *LsmTree) {
 			c.Status(http.StatusNotFound)
 		}
 	})
+	//post key
 	router.POST("/:key", func(c *gin.Context) {
 		var json Value
 		key := c.Param("key")
