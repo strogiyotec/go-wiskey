@@ -10,6 +10,8 @@ const (
 	tombstone = "THOMB" //in lsm tree , when key is deleted the value is marked as tombstone
 )
 
+// apple -> THOMB
+
 //in memory redblack tree
 type Memtable struct {
 	tree    *rbt.Tree //red black tree where key is a string and value is ValueMeta that shows where value is stored in vlog

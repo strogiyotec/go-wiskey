@@ -58,6 +58,7 @@ func NewLsmTree(log *vlog, sstableDir string, memtable *Memtable, gc uint) *LsmT
 	return lsm
 }
 
+//Merge sstables, the final result is the sstable files with amount decreased by x2
 func (lsm *LsmTree) Merge() error {
 	lsm.rwm.Lock()
 	defer lsm.rwm.Unlock()
@@ -67,8 +68,10 @@ func (lsm *LsmTree) Merge() error {
 		for index < len(lsm.sstables) {
 			firstReader, _ := os.Open(lsm.sstables[index])
 			secondReader, _ := os.Open(lsm.sstables[index+1])
+			//read two sstables
 			firstSStable := ReadTable(firstReader, lsm.log)
 			secondSStable := ReadTable(secondReader, lsm.log)
+			//merge them together into the single file
 			filePath, err := lsm.mergeFiles(firstSStable, secondSStable)
 			if err != nil {
 				return err
@@ -86,8 +89,8 @@ func (lsm *LsmTree) Merge() error {
 			}
 			index += 2
 		}
+		lsm.sstables = newSstableFiles
 	}
-	lsm.sstables = newSstableFiles
 	return nil
 }
 func (lsm *LsmTree) Get(key []byte) ([]byte, bool) {
@@ -104,6 +107,7 @@ func (lsm *LsmTree) Get(key []byte) ([]byte, bool) {
 		if err != nil {
 			panic(err)
 		}
+		//check if it's a tombstone
 		if len(entry.value) == len(tombstone) && bytes.Compare(entry.value, []byte(tombstone)) == 0 {
 			return nil, false
 		} else {
@@ -174,14 +178,17 @@ func (lsm *LsmTree) Flush() error {
 }
 
 func (lsm *LsmTree) save(entry *TableEntry) error {
+	//append to log
 	meta, err := lsm.log.Append(entry)
 	if err != nil {
 		return err
 	}
+	//save to memtable
 	err = lsm.memtable.Put(entry.key, meta)
 	if err != nil {
 		return err
 	}
+	//if full flush memtable to sstable
 	if lsm.memtable.isFull() {
 		err := lsm.Flush()
 		if err != nil {
