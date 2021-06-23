@@ -30,12 +30,11 @@ decreases write amplification of lsm tree during merging
     - [X] Store the last head position in the separate file
     - [X] Store al values from head to tail into the memtable during recovery
 6. [X] Merge sstable files
-7. [ ] Cli interface
+7. [X] Cli interface
     - [X] specify sstable path 
     - [X] specify vlog path
     - [X] specify checkpoint path
-    - [ ] specify memtable size
-    - [X] specify sstable size
+    - [X] specify memtable size
 8. [ ] Cleanup
     - [X] Merge sstables
     - [ ] Garbage collect vlog
