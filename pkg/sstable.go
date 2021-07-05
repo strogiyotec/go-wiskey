@@ -20,7 +20,6 @@ type SSTable struct {
 	log     *vlog
 }
 
-
 //Constructor
 func ReadTable(reader *os.File, log *vlog) *SSTable {
 	stats, _ := reader.Stat()
@@ -56,14 +55,20 @@ func (table *SSTable) Get(key []byte) (*SearchEntry, bool) {
 	if compare > 0 {
 		return nil, false
 	}
-	return table.binarySearch(key)
+	search, found, _ := table.binarySearch(key)
+	return search, found
+}
+
+func (table *SSTable) KeyAtIndex(key []byte) (bool, int) {
+	_, found, index := table.binarySearch(key)
+	return found, index
 }
 
 //Tries to find given key in the sstable
-//Returns value byte array or nil if not found
-//timestamp of this value or 0 if not found
-//bool true if found,false otherwise
-func (table *SSTable) binarySearch(key []byte) (*SearchEntry, bool) {
+//Returns 1. value byte array or nil if not found
+//2. bool true if found,false otherwise
+//3. at which index this key was found
+func (table *SSTable) binarySearch(key []byte) (*SearchEntry, bool, int) {
 	left := 0
 	right := len(table.indexes) - 1
 	for left < right {
@@ -76,7 +81,7 @@ func (table *SSTable) binarySearch(key []byte) (*SearchEntry, bool) {
 		keyBuffer := tableReader.readKey(fileKeyLength)
 		compare := bytes.Compare(key, keyBuffer)
 		if compare == 0 {
-			return table.fetchFromVlog(tableReader), true
+			return table.fetchFromVlog(tableReader), true, middle
 		} else if compare > 0 {
 			left = middle + 1
 		} else {
@@ -87,12 +92,12 @@ func (table *SSTable) binarySearch(key []byte) (*SearchEntry, bool) {
 	tableReader := NewReader(table.reader, int64(index.Offset))
 	for tableReader.offset != index.BlockLength {
 		keyLength := tableReader.readKeyLength()
-		fileKey := tableReader.readKey(keyLength)
-		if bytes.Compare(key, fileKey) == 0 {
-			return table.fetchFromVlog(tableReader), true
+		keyFromFile := tableReader.readKey(keyLength)
+		if bytes.Compare(key, keyFromFile) == 0 {
+			return table.fetchFromVlog(tableReader), true, left
 		}
 	}
-	return nil, false
+	return nil, false, -1
 }
 
 func (table *SSTable) fetchFromVlog(tableReader *SSTableReader) *SearchEntry {

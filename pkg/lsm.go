@@ -58,6 +58,27 @@ func NewLsmTree(log *vlog, sstableDir string, memtable *Memtable, gc uint) *LsmT
 	return lsm
 }
 
+type TableWithIndex struct {
+	index     int
+	tablePath string
+}
+
+//Check if given key was deleted
+func (lsm *LsmTree) Exists(key []byte) []TableWithIndex {
+	lsm.rwm.RLock()
+	defer lsm.rwm.RUnlock()
+	var tableWithIndexes []TableWithIndex
+	for _, tablePath := range lsm.sstables {
+		reader, _ := os.Open(tablePath)
+		sstable := ReadTable(reader, lsm.log)
+		found, index := sstable.KeyAtIndex(key)
+		if found {
+			tableWithIndexes = append(tableWithIndexes, TableWithIndex{index: index, tablePath: tablePath})
+		}
+	}
+	return tableWithIndexes
+}
+
 //Merge sstables, the final result is the sstable files with amount decreased by x2
 func (lsm *LsmTree) Merge() error {
 	lsm.rwm.Lock()
@@ -197,6 +218,7 @@ func (lsm *LsmTree) save(entry *TableEntry) error {
 	}
 	return nil
 }
+
 func (lsm *LsmTree) findInSStables(key []byte) (*SearchEntry, bool) {
 	var latestEntry *SearchEntry
 	for _, tablePath := range lsm.sstables {

@@ -52,12 +52,14 @@ func (log *vlog) Get(meta ValueMeta) (*TableEntry, error) {
 	return &TableEntry{key: key, value: value}, nil
 }
 
-//Run garbage collector
-//Read tailLength entries from the start of vlog
-//Check if they were deleted, if no append them to head
-//Params: entries - how many entries to read from gc
-//Need to implement sstable merge first
-/*func (log *vlog) Gc(entries uint, sstable *SSTable) error {
+func (log *vlog) RunGc(entries int, lsm *LsmTree) error {
+	type toAppend struct {
+		keyLength        uint32
+		valueLength      uint32
+		key              []byte
+		value            []byte
+		tableWithIndexes []TableWithIndex
+	}
 	file, err := os.OpenFile(log.file, os.O_RDONLY|os.O_APPEND, 0666)
 	if err != nil {
 		return err
@@ -67,21 +69,41 @@ func (log *vlog) Get(meta ValueMeta) (*TableEntry, error) {
 	if err != nil {
 		return err
 	}
-	totalSize := stat.Size()
-	currentSize := int64(0)
-	for currentSize < totalSize {
+	logFileSize := stat.Size()
+	if logFileSize == 0 {
+		return nil
+	}
+	readBytesSize := int64(0) //how many bytes were read from file
+	counter := 0
+	//list of entries that are still exist
+	var stillExist []toAppend
+	for readBytesSize < logFileSize && counter < entries {
 		keyLengthBuffer := make([]byte, uint32Size)
 		//read key length
-		file.Read(keyLengthBuffer)
+		_, _ = file.Read(keyLengthBuffer)
 		keyLength := binary.BigEndian.Uint32(keyLengthBuffer)
+		//read value length
 		valueLengthBuffer := make([]byte, uint32Size)
-		//read key length
-		file.Read(valueLengthBuffer)
+		_, _ = file.Read(valueLengthBuffer)
 		valueLength := binary.BigEndian.Uint32(valueLengthBuffer)
+		keyBuffer := make([]byte, keyLength)
+		valueBuffer := make([]byte, valueLength)
+		_, _ = file.Read(keyBuffer)
+		_, _ = file.Read(valueBuffer)
+		tableWithIndexes := lsm.Exists(keyBuffer)
+		if len(tableWithIndexes) != 0 {
+			stillExist = append(stillExist, toAppend{keyLength: keyLength, valueLength: valueLength, key: keyBuffer, value: valueBuffer, tableWithIndexes: tableWithIndexes})
+		}
+		readBytesSize += int64(uint32Size + keyLength + uint32Size + valueLength)
+		counter++
 	}
-	return binary.BigEndian.Uint32(keyLengthBuffer)
+	//TODO :  So we have a list of entries that still exist in lsm tree
+	// 1. we need to append them to the end of vlog
+	// 2. truncate the beginning of vlog by readBytesSize
+	// 3. Update sstable path to vlog using new offset that was appended to end of file
+	return nil
 }
-*/
+
 //Restore vlog to given memtable
 func (log *vlog) RestoreTo(headOffset uint32, memtable *Memtable) error {
 	reader, err := os.OpenFile(log.file, os.O_RDONLY|os.O_CREATE, 0666)
