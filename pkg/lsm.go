@@ -65,8 +65,6 @@ type TableWithIndex struct {
 
 //Check if given key was deleted
 func (lsm *LsmTree) Exists(key []byte) []TableWithIndex {
-	lsm.rwm.RLock()
-	defer lsm.rwm.RUnlock()
 	var tableWithIndexes []TableWithIndex
 	for _, tablePath := range lsm.sstables {
 		reader, _ := os.Open(tablePath)
@@ -75,6 +73,7 @@ func (lsm *LsmTree) Exists(key []byte) []TableWithIndex {
 		if found {
 			tableWithIndexes = append(tableWithIndexes, TableWithIndex{index: index, tablePath: tablePath})
 		}
+		sstable.Close()
 	}
 	return tableWithIndexes
 }
@@ -93,11 +92,13 @@ func (lsm *LsmTree) Merge() error {
 			firstSStable := ReadTable(firstReader, lsm.log)
 			secondSStable := ReadTable(secondReader, lsm.log)
 			//merge them together into the single file
-			filePath, err := lsm.mergeFiles(firstSStable, secondSStable)
+			filePath, err, empty := lsm.mergeFiles(firstSStable, secondSStable)
 			if err != nil {
 				return err
 			}
-			newSstableFiles = append(newSstableFiles, filePath)
+			if !empty {
+				newSstableFiles = append(newSstableFiles, filePath)
+			}
 			firstSStable.Close()
 			secondSStable.Close()
 			err = os.Remove(lsm.sstables[index])
@@ -115,8 +116,6 @@ func (lsm *LsmTree) Merge() error {
 	return nil
 }
 func (lsm *LsmTree) Get(key []byte) ([]byte, bool) {
-	lsm.rwm.RLock()
-	defer lsm.rwm.RUnlock()
 	_, ok := lsm.deleted[string(key)]
 	if ok {
 		return nil, false
@@ -222,7 +221,11 @@ func (lsm *LsmTree) save(entry *TableEntry) error {
 func (lsm *LsmTree) findInSStables(key []byte) (*SearchEntry, bool) {
 	var latestEntry *SearchEntry
 	for _, tablePath := range lsm.sstables {
-		reader, _ := os.Open(tablePath)
+		//TODO: test case fails because it's null ?
+		reader, e := os.Open(tablePath)
+		if e != nil{
+			panic(e)
+		}
 		sstable := ReadTable(reader, lsm.log)
 		searchEntry, found := sstable.Get(key)
 		if found {
@@ -234,6 +237,7 @@ func (lsm *LsmTree) findInSStables(key []byte) (*SearchEntry, bool) {
 				}
 			}
 		}
+		sstable.Close()
 	}
 	return latestEntry, latestEntry != nil
 }
@@ -286,11 +290,12 @@ func (lsm *LsmTree) fillSstables() {
 	}
 }
 
-func (lsm *LsmTree) mergeFiles(first *SSTable, second *SSTable) (string, error) {
+func (lsm *LsmTree) mergeFiles(first *SSTable, second *SSTable) (string, error, bool) {
 	sstablePath := lsm.sstableDir + "/" + RandStringBytes(sstableFileLength) + ".sstable"
 	file, err := os.OpenFile(sstablePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
+	empty := true
 	if err != nil {
-		return "", err
+		return "", err, true
 	}
 	writer := NewWriter(file, uint32(20))
 	var i1, i2 int
@@ -304,37 +309,49 @@ func (lsm *LsmTree) mergeFiles(first *SSTable, second *SSTable) (string, error) 
 			timestamp := secondReader.readTimestamp()
 			offset := secondReader.readValueOffset()
 			length := secondReader.readValueLength()
-			_, err := writer.WriteEntry(&sstableEntry{key: []byte(secondKey), timeStamp: timestamp, valueOffset: offset, valueLength: length})
-			if err != nil {
-				return "", err
+			_, found := lsm.Get([]byte(secondKey))
+			if found {
+				_, err := writer.WriteEntry(&sstableEntry{key: []byte(secondKey), timeStamp: timestamp, valueOffset: offset, valueLength: length})
+				if err != nil {
+					return "", err, true
+				}
+				empty = false
 			}
 			i2++
 		} else if compare < 0 {
 			timestamp := firstReader.readTimestamp()
 			offset := firstReader.readValueOffset()
 			length := firstReader.readValueLength()
-			_, err := writer.WriteEntry(&sstableEntry{key: []byte(firstKey), timeStamp: timestamp, valueOffset: offset, valueLength: length})
-			if err != nil {
-				return "", err
+			_, found := lsm.Get([]byte(firstKey))
+			if found {
+				_, err := writer.WriteEntry(&sstableEntry{key: []byte(firstKey), timeStamp: timestamp, valueOffset: offset, valueLength: length})
+				if err != nil {
+					return "", err, true
+				}
+				empty = false
 			}
 			i1++
 		} else {
 			firstTm := firstReader.readTimestamp()
 			secondTm := secondReader.readTimestamp()
-			if firstTm > secondTm {
-				offset := firstReader.readValueOffset()
-				length := firstReader.readValueLength()
-				_, err := writer.WriteEntry(&sstableEntry{key: []byte(firstKey), timeStamp: firstTm, valueOffset: offset, valueLength: length})
-				if err != nil {
-					return "", err
+			_, found := lsm.Get([]byte(firstKey))
+			if found {
+				if firstTm > secondTm {
+					offset := firstReader.readValueOffset()
+					length := firstReader.readValueLength()
+					_, err := writer.WriteEntry(&sstableEntry{key: []byte(firstKey), timeStamp: firstTm, valueOffset: offset, valueLength: length})
+					if err != nil {
+						return "", err, true
+					}
+				} else {
+					offset := secondReader.readValueOffset()
+					length := secondReader.readValueLength()
+					_, err := writer.WriteEntry(&sstableEntry{key: []byte(firstKey), timeStamp: secondTm, valueOffset: offset, valueLength: length})
+					if err != nil {
+						return "", err, true
+					}
 				}
-			} else {
-				offset := secondReader.readValueOffset()
-				length := secondReader.readValueLength()
-				_, err := writer.WriteEntry(&sstableEntry{key: []byte(firstKey), timeStamp: secondTm, valueOffset: offset, valueLength: length})
-				if err != nil {
-					return "", err
-				}
+				empty = false
 			}
 			i1++
 			i2++
@@ -346,9 +363,13 @@ func (lsm *LsmTree) mergeFiles(first *SSTable, second *SSTable) (string, error) 
 		timestamp := reader.readTimestamp()
 		offset := reader.readValueOffset()
 		length := reader.readValueLength()
-		_, err := writer.WriteEntry(&sstableEntry{key: key, timeStamp: timestamp, valueOffset: offset, valueLength: length})
-		if err != nil {
-			return "", err
+		_, found := lsm.Get(key)
+		if found {
+			_, err := writer.WriteEntry(&sstableEntry{key: key, timeStamp: timestamp, valueOffset: offset, valueLength: length})
+			if err != nil {
+				return "", err, true
+			}
+			empty = true
 		}
 		i1++
 	}
@@ -358,15 +379,20 @@ func (lsm *LsmTree) mergeFiles(first *SSTable, second *SSTable) (string, error) 
 		timestamp := reader.readTimestamp()
 		offset := reader.readValueOffset()
 		length := reader.readValueLength()
-		_, err := writer.WriteEntry(&sstableEntry{key: key, timeStamp: timestamp, valueOffset: offset, valueLength: length})
-		if err != nil {
-			return "", err
+		_, found := lsm.Get(key)
+		if found {
+			_, err := writer.WriteEntry(&sstableEntry{key: key, timeStamp: timestamp, valueOffset: offset, valueLength: length})
+			if err != nil {
+				return "", err, true
+			}
+			empty = false
 		}
+
 		i2++
 	}
 	err = writer.Close()
 	if err != nil {
-		return "", err
+		return "", err, true
 	}
-	return sstablePath, nil
+	return sstablePath, nil, empty
 }

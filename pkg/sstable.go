@@ -29,6 +29,27 @@ func ReadTable(reader *os.File, log *vlog) *SSTable {
 	return &SSTable{footer: footer, indexes: indexes, reader: reader, log: log}
 }
 
+func OverrideVlogOffset(position int, meta *ValueMeta, file *os.File) error {
+	stats, _ := file.Stat()
+	footer := readFooter(stats, file)
+	indexes := readIndexes(stats, file, *footer)
+	index := indexes[position]
+	buffer := bytes.NewBuffer([]byte{})
+	//offset
+	if err := binary.Write(buffer, binary.BigEndian, meta.offset); err != nil {
+		return err
+	}
+	//length
+	if err := binary.Write(buffer, binary.BigEndian, meta.length); err != nil {
+		return err
+	}
+	_, err := file.WriteAt(buffer.Bytes(), int64(index.Offset))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (table *SSTable) Close() {
 	table.reader.Close()
 }

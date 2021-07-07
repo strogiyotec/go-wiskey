@@ -53,14 +53,7 @@ func (log *vlog) Get(meta ValueMeta) (*TableEntry, error) {
 }
 
 func (log *vlog) RunGc(entries int, lsm *LsmTree) error {
-	type toAppend struct {
-		keyLength        uint32
-		valueLength      uint32
-		key              []byte
-		value            []byte
-		tableWithIndexes []TableWithIndex
-	}
-	file, err := os.OpenFile(log.file, os.O_RDONLY|os.O_APPEND, 0666)
+	file, err := os.OpenFile(log.file, os.O_RDONLY, 0666)
 	if err != nil {
 		return err
 	}
@@ -73,10 +66,8 @@ func (log *vlog) RunGc(entries int, lsm *LsmTree) error {
 	if logFileSize == 0 {
 		return nil
 	}
-	readBytesSize := int64(0) //how many bytes were read from file
+	readBytesSize := int64(0) //how many bytes were read from a file
 	counter := 0
-	//list of entries that are still exist
-	var stillExist []toAppend
 	for readBytesSize < logFileSize && counter < entries {
 		keyLengthBuffer := make([]byte, uint32Size)
 		//read key length
@@ -92,15 +83,30 @@ func (log *vlog) RunGc(entries int, lsm *LsmTree) error {
 		_, _ = file.Read(valueBuffer)
 		tableWithIndexes := lsm.Exists(keyBuffer)
 		if len(tableWithIndexes) != 0 {
-			stillExist = append(stillExist, toAppend{keyLength: keyLength, valueLength: valueLength, key: keyBuffer, value: valueBuffer, tableWithIndexes: tableWithIndexes})
+			entry := &TableEntry{key: keyBuffer, value: valueBuffer}
+			valueMeta, err := log.Append(entry)
+			if err != nil {
+				return err
+			}
+			for i := range tableWithIndexes {
+				tableWithIndex := tableWithIndexes[i]
+				file, err := os.OpenFile(tableWithIndex.tablePath, os.O_RDWR, 0666)
+				if err != nil {
+					return err
+				}
+				err = OverrideVlogOffset(tableWithIndex.index, valueMeta, file)
+				if err != nil {
+					return err
+				}
+				err = file.Close()
+				if err != nil {
+					return err
+				}
+			}
 		}
 		readBytesSize += int64(uint32Size + keyLength + uint32Size + valueLength)
 		counter++
 	}
-	//TODO :  So we have a list of entries that still exist in lsm tree
-	// 1. we need to append them to the end of vlog
-	// 2. truncate the beginning of vlog by readBytesSize
-	// 3. Update sstable path to vlog using new offset that was appended to end of file
 	return nil
 }
 

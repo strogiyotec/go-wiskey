@@ -134,28 +134,35 @@ func TestLsmTree_Merge(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		//store exactly 2 sstables
-		if len(tree.sstables) == 2 {
+		//store exactly 3 sstables
+		if len(tree.sstables) == 3 {
 			break
 		}
 	}
-	amount := len(tree.sstables)
-	if amount < 1 {
-		t.Fatal("Amount of sstables has to be at least 1")
+	//let's delete first key, after the merge it should not be in the sstables
+	err := tree.Delete(entries[0].key)
+	if err != nil {
+		t.Fatal(err)
 	}
+	err = tree.Delete(entries[1].key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	amount := len(tree.sstables)
+	t.Logf("Lsm has %d files before merge", amount)
 	//wait for merge
-	time.Sleep(6 * time.Second)
+	time.Sleep(100 * time.Second)
 	sizeAfterGc := len(tree.sstables)
-	if sizeAfterGc*2 != amount {
+	if sizeAfterGc != 2 {
 		t.Fatal("Amount of sstables after merge had to be decreased by 2 times")
 	}
-	for _, entry := range entries {
+	for i, entry := range entries {
 		if savedCnt == 0 {
 			break
 		}
 		savedCnt--
 		_, found := tree.Get(entry.key)
-		if !found {
+		if !found && i != 0 && i != 1 {
 			t.Fatal("Wasn't able to find key after merge")
 		}
 	}
