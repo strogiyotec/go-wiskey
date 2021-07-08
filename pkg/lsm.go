@@ -15,6 +15,7 @@ import (
 
 type LsmTree struct {
 	rwm        sync.RWMutex
+	gcMutex    sync.RWMutex
 	sstableDir string    //directory with sstables
 	log        *vlog     //vlog
 	memtable   *Memtable //in memory table
@@ -45,7 +46,7 @@ func NewLsmTree(log *vlog, sstableDir string, memtable *Memtable, gc uint) *LsmT
 	//run job to periodically merge sstables
 	go func(tree *LsmTree, gc uint) {
 		fmt.Println("Gc thread was initialized")
-		for true {
+		//for true {
 			time.Sleep(time.Duration(gc) * time.Second)
 			fmt.Println("SSTABLE GC started")
 			err := lsm.Merge()
@@ -53,7 +54,7 @@ func NewLsmTree(log *vlog, sstableDir string, memtable *Memtable, gc uint) *LsmT
 				fmt.Println("Gc encountered an error " + err.Error() + " Stop gc thread")
 				return
 			}
-		}
+		//}
 	}(lsm, gc)
 	return lsm
 }
@@ -61,6 +62,13 @@ func NewLsmTree(log *vlog, sstableDir string, memtable *Memtable, gc uint) *LsmT
 type TableWithIndex struct {
 	index     int
 	tablePath string
+}
+
+
+func (lsm *LsmTree) CompressVlog() error {
+	//TODO: hard coded value, let's make it configurable
+	size := 2
+	return lsm.log.RunGc(size, lsm)
 }
 
 //Check if given key was deleted
@@ -85,6 +93,10 @@ func (lsm *LsmTree) Merge() error {
 	var newSstableFiles []string
 	index := 0
 	if len(lsm.sstables)%2 == 0 {
+		for _, sstable := range lsm.sstables {
+			_, err := os.Stat(sstable)
+			fmt.Printf("%v exists %v\n", sstable, !os.IsNotExist(err))
+		}
 		for index < len(lsm.sstables) {
 			firstReader, _ := os.Open(lsm.sstables[index])
 			secondReader, _ := os.Open(lsm.sstables[index+1])
@@ -101,15 +113,13 @@ func (lsm *LsmTree) Merge() error {
 			}
 			firstSStable.Close()
 			secondSStable.Close()
-			err = os.Remove(lsm.sstables[index])
-			if err != nil {
-				return err
-			}
-			err = os.Remove(lsm.sstables[index+1])
-			if err != nil {
-				return err
-			}
 			index += 2
+		}
+		for _, sstable := range lsm.sstables {
+			err := os.Remove(sstable)
+			if err != nil {
+				return err
+			}
 		}
 		lsm.sstables = newSstableFiles
 	}
@@ -221,9 +231,8 @@ func (lsm *LsmTree) save(entry *TableEntry) error {
 func (lsm *LsmTree) findInSStables(key []byte) (*SearchEntry, bool) {
 	var latestEntry *SearchEntry
 	for _, tablePath := range lsm.sstables {
-		//TODO: test case fails because it's null ?
 		reader, e := os.Open(tablePath)
-		if e != nil{
+		if e != nil {
 			panic(e)
 		}
 		sstable := ReadTable(reader, lsm.log)

@@ -117,6 +117,9 @@ func (table *SSTable) binarySearch(key []byte) (*SearchEntry, bool, int) {
 		if bytes.Compare(key, keyFromFile) == 0 {
 			return table.fetchFromVlog(tableReader), true, left
 		}
+		tableReader.readTimestamp()
+		tableReader.readValueOffset()
+		tableReader.readValueLength()
 	}
 	return nil, false, -1
 }

@@ -151,7 +151,7 @@ func TestLsmTree_Merge(t *testing.T) {
 	amount := len(tree.sstables)
 	t.Logf("Lsm has %d files before merge", amount)
 	//wait for merge
-	time.Sleep(100 * time.Second)
+	time.Sleep(6 * time.Second)
 	sizeAfterGc := len(tree.sstables)
 	if sizeAfterGc != 2 {
 		t.Fatal("Amount of sstables after merge had to be decreased by 2 times")
@@ -165,6 +165,19 @@ func TestLsmTree_Merge(t *testing.T) {
 		if !found && i != 0 && i != 1 {
 			t.Fatal("Wasn't able to find key after merge")
 		}
+	}
+	stat, err := os.Stat(tree.log.file)
+	if err != nil{
+		t.Fatal(err)
+	}
+	sizeBefore := uint32(stat.Size())
+	err = tree.CompressVlog()
+	if err != nil{
+		t.Fatal(err)
+	}
+	sizeAfter := tree.log.size
+	if sizeBefore >= sizeAfter{
+		t.Fatal("The size of vlog had to decrease after compression")
 	}
 }
 

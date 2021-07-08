@@ -12,10 +12,14 @@ type vlog struct {
 }
 
 func NewVlog(file string, checkpoint string) *vlog {
+	stat, err := os.Stat(file)
+	if err != nil {
+		panic(err)
+	}
 	return &vlog{
 		file:       file,
 		checkpoint: checkpoint,
-		size:       0,
+		size:       uint32(stat.Size()),
 	}
 }
 
@@ -107,6 +111,14 @@ func (log *vlog) RunGc(entries int, lsm *LsmTree) error {
 		readBytesSize += int64(uint32Size + keyLength + uint32Size + valueLength)
 		counter++
 	}
+	//TODO: so we skipped deleted entries
+	//now we have to remove the beginning of the file
+	//starting from readBytesSize position
+	info, err := os.Stat(log.file)
+	if err != nil{
+		return err
+	}
+	log.size = uint32(info.Size())
 	return nil
 }
 
