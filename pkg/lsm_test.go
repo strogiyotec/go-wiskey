@@ -167,17 +167,17 @@ func TestLsmTree_Merge(t *testing.T) {
 		}
 	}
 	stat, err := os.Stat(tree.log.file)
-	if err != nil{
+	if err != nil {
 		t.Fatal(err)
 	}
 	sizeBefore := uint32(stat.Size())
 	err = tree.CompressVlog()
-	if err != nil{
+	if err != nil {
 		t.Fatal(err)
 	}
 	sizeAfter := tree.log.size
-	if sizeBefore >= sizeAfter{
-		t.Fatal("The size of vlog had to decrease after compression")
+	if sizeBefore <= sizeAfter {
+		t.Fatalf("The size of vlog had to decrease after compression but was %d , become %d", sizeBefore, sizeAfter)
 	}
 }
 

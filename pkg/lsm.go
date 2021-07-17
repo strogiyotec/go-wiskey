@@ -46,7 +46,7 @@ func NewLsmTree(log *vlog, sstableDir string, memtable *Memtable, gc uint) *LsmT
 	//run job to periodically merge sstables
 	go func(tree *LsmTree, gc uint) {
 		fmt.Println("Gc thread was initialized")
-		//for true {
+		for true {
 			time.Sleep(time.Duration(gc) * time.Second)
 			fmt.Println("SSTABLE GC started")
 			err := lsm.Merge()
@@ -54,7 +54,7 @@ func NewLsmTree(log *vlog, sstableDir string, memtable *Memtable, gc uint) *LsmT
 				fmt.Println("Gc encountered an error " + err.Error() + " Stop gc thread")
 				return
 			}
-		//}
+		}
 	}(lsm, gc)
 	return lsm
 }

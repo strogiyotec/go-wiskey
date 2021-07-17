@@ -12,6 +12,14 @@ type Value struct {
 
 func Start(lsm *LsmTree) {
 	router := gin.New()
+	router.GET("/gc", func(c *gin.Context) {
+		err := lsm.CompressVlog()
+		if err != nil{
+			c.JSON(http.StatusInternalServerError,gin.H{"value":"Something went wrong during Gc"})
+		} else{
+			c.Status(http.StatusOK)
+		}
+	})
 	//delete key
 	router.DELETE("/:key", func(c *gin.Context) {
 		key := c.Param("key")

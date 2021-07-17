@@ -2,6 +2,7 @@ package wiskey
 
 import (
 	binary "encoding/binary"
+	"io"
 	"os"
 )
 
@@ -12,6 +13,11 @@ type vlog struct {
 }
 
 func NewVlog(file string, checkpoint string) *vlog {
+	vlogFile, err := os.OpenFile(file, os.O_CREATE, 0666)
+	vlogFile.Close()
+	if err != nil {
+		panic(err)
+	}
 	stat, err := os.Stat(file)
 	if err != nil {
 		panic(err)
@@ -114,11 +120,49 @@ func (log *vlog) RunGc(entries int, lsm *LsmTree) error {
 	//TODO: so we skipped deleted entries
 	//now we have to remove the beginning of the file
 	//starting from readBytesSize position
+	err = truncateVlog(readBytesSize, log.file)
+	if err != nil {
+		return err
+	}
 	info, err := os.Stat(log.file)
-	if err != nil{
+	if err != nil {
 		return err
 	}
 	log.size = uint32(info.Size())
+	return nil
+}
+
+func truncateVlog(offset int64, file string) error {
+	fin, err := os.Open(file)
+	if err != nil {
+		return err
+	}
+	defer fin.Close()
+
+	tempFileName := RandStringBytes(10)
+	fout, err := os.Create(tempFileName)
+	if err != nil {
+		return err
+	}
+	defer fout.Close()
+
+	// Offset is the number of bytes you want to exclude
+	_, err = fin.Seek(offset, io.SeekStart)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(fout, fin)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(file); err != nil {
+		panic(err)
+	}
+
+	if err := os.Rename(tempFileName, file); err != nil {
+		return err
+	}
 	return nil
 }
 
