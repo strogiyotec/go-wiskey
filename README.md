@@ -1,7 +1,15 @@
 # go-wiskey
 
+> **WARNING**:  When I wrote this, only God and I understood what I was doing.
+> Now, God only knows. It's a working implementation of Wiskey paper but 
+> it doesn't support a great concurrency control.
+> also I didn't find an explanation on how Wiskey deletes unused keys from sstables
+> so I made my custom ugly implementation(ask how it works if you are interested)
+> Code is test covered , however, as it was my first big GoLang project
+> I didn't really know how to organize it so right now code is unmaintainable
+
 Golang implementation
-of [Wiskey](https://www.usenix.org/system/files/conference/fast16/fast16-papers-lu.pdf)
+of a [Wiskey](https://www.usenix.org/system/files/conference/fast16/fast16-papers-lu.pdf)
 paper
 
 # Description
@@ -36,9 +44,9 @@ write amplification of lsm tree during merging
     - [X] specify vlog path
     - [X] specify checkpoint path
     - [X] specify memtable size
-8. [ ] Reclaim space
+8. [X] Reclaim space
     - [X] Merge sstables
-    - [ ] Garbage collect vlog
+    - [X] Garbage collect vlog
 
 ## Install
 
